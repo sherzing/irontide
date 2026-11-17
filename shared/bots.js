@@ -9,7 +9,9 @@ export const SKILLS = {
 };
 export const BOT_NAMES = ['Harlow', 'Voss', 'Kessler', 'Marek', 'Ito', 'Brandt', 'Okafor', 'Reyes', 'Lindqvist', 'Novak', 'Tamsin', 'Dray',
   'Castell', 'Yun', 'Abara', 'Moreau', 'Stroud', 'Petrov', 'Hale', 'Quint', 'Sorrel', 'Vance', 'Idris', 'Brooke', 'Aziz', 'Fenn', 'Garza', 'Holt',
-  'Juno', 'Kade', 'Lark', 'Mako', 'Nash', 'Orrin'];
+  'Juno', 'Kade', 'Lark', 'Mako', 'Nash', 'Orrin', 'Pryce', 'Rook', 'Sable', 'Tolan', 'Ulrich', 'Varga', 'Wren', 'Xavi', 'Yates', 'Zeller',
+  'Ames', 'Boone', 'Cray', 'Dunne', 'Eze', 'Falk', 'Grieve', 'Hobbs', 'Imani', 'Jarrah', 'Kowal', 'Lund', 'Mbeki', 'Nilsen', 'Oduya', 'Pike',
+  'Ramos', 'Santos', 'Thorne', 'Usman', 'Vidal', 'Weir'];      // at least MAX_PLAYERS of them
 
 const rnd = (a, b) => a + Math.random() * (b - a);
 const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) / 0.75;

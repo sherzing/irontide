@@ -1,5 +1,5 @@
 // IRONTIDE dedicated server: serves the built client (dist/) and hosts WebSocket rooms.
-// Each room runs one authoritative GameSim (shared/sim.js). Up to 32 players per room.
+// Each room runs one authoritative GameSim (shared/sim.js). Up to MAX_PLAYERS (64) players per room.
 //   node server/index.js [--port 8787] [--mode tdm|dm|campaign] [--fill 12] [--skill normal] [--level drydock]
 import http from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
@@ -7,7 +7,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { GameSim, TICK, MAX_PLAYERS } from '../shared/sim.js';
-import { LEVELS, DEFAULT_LEVEL } from '../shared/levels/index.js';
+import { LEVELS, DEFAULT_LEVEL, recommendedPlayers } from '../shared/levels/index.js';
 
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : process.env[k.toUpperCase()] ?? d; };
 const PORT = +arg('port', 8787);
@@ -18,7 +18,7 @@ const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css
 const server = http.createServer(async (req, res) => {
   try {
     let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-    if (p === '/status') { res.writeHead(200, { 'content-type': 'application/json' }); return res.end(JSON.stringify([...rooms.values()].map((r) => ({ room: r.name, mode: r.sim.mode, players: r.clients.size, max: MAX_PLAYERS })))); }
+    if (p === '/status') { res.writeHead(200, { 'content-type': 'application/json' }); return res.end(JSON.stringify([...rooms.values()].map((r) => ({ room: r.name, mode: r.sim.mode, players: r.clients.size, max: MAX_PLAYERS, level: r.sim.level.id, recommended: recommendedPlayers(r.sim.level) })))); }
     if (p.endsWith('/')) p += 'index.html';
     const file = normalize(join(DIST, p));
     if (!file.startsWith(DIST)) { res.writeHead(403); return res.end(); }
@@ -42,7 +42,8 @@ function getRoom(name, q) {
     broadcast: (m, except) => { const s = JSON.stringify(m); for (const [id, ws] of r.clients) if (id !== except && ws.readyState === 1 && ws.bufferedAmount < 1 << 20) ws.send(s); },
   });
   rooms.set(name, r);
-  console.log(`[room ${name}] created (${mode}, fill ${fill}, ${level})`);
+  const rec = recommendedPlayers(LEVELS[level]);
+  console.log(`[room ${name}] created (${mode}, fill ${fill}, ${level}: suits ${rec.min}-${rec.max} players, cap ${MAX_PLAYERS})`);
   return r;
 }
 
@@ -51,7 +52,7 @@ wss.on('connection', (ws, req) => {
   const q = new URL(req.url, 'http://x').searchParams;
   const roomName = (q.get('room') || 'public').slice(0, 24);
   const room = getRoom(roomName, q);
-  if (room.clients.size >= MAX_PLAYERS) { ws.send(JSON.stringify({ t: 'full' })); return ws.close(1013, 'Server is full (32 players)'); }
+  if (room.clients.size >= MAX_PLAYERS) { ws.send(JSON.stringify({ t: 'full' })); return ws.close(1013, `Server is full (${MAX_PLAYERS} players)`); }
   const id = nextId++;
   room.clients.set(id, ws);
   room.sim.addPlayer(id, (q.get('name') || 'Player').replace(/[^\w \-.]/g, '').slice(0, 16) || 'Player');

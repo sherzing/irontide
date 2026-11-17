@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { World, PLAYER, hitCharacter } from '../../shared/collision.js';
 import { levelColliders } from '../../shared/props.js';
 import { WEAPONS, WEAPON_ORDER } from '../../shared/weapons.js';
+import { MAX_PLAYERS } from '../../shared/sim.js';
 
 const V = () => new THREE.Vector3();
 const _a = V(), _b = V(), _c = V(), _d = V(), _n = V();
@@ -145,7 +146,7 @@ export class Game {
       case 'say': this.hud.subtitle(m.who, m.s); this.audio.ui('radio'); break;
       case 'mission': this.ended = true; this.hud.setObjective(null); this.hud.banner(m.win ? 'Mission complete' : 'Mission failed', `Time ${(m.time / 60) | 0}:${String(m.time % 60).padStart(2, '0')}`, 'Press Esc to return to the menu'); this.audio.ui('objective'); break;
       case 'chat': this.hud.chat(this.roster.get(m.id)?.name || '?', m.s); break;
-      case 'full': this.onKicked?.('Server is full (32 players)'); break;
+      case 'full': this.onKicked?.(`Server is full (${MAX_PLAYERS} players)`); break;
     }
   }
   addEnt(e) { this.roster.set(e.id, { ...e }); if (!this.me || e.id !== this.me.id) this.chars.add(e); }

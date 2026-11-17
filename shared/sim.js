@@ -7,7 +7,7 @@ import { levelColliders } from './props.js';
 import { LEVELS, DEFAULT_LEVEL } from './levels/index.js';
 import { botThink, botAlert, makeAI, BOT_NAMES } from './bots.js';
 
-export const MAX_PLAYERS = 32;
+export const MAX_PLAYERS = 64;      // the game's hard cap per match; levels advertise the size they suit (recommendedPlayers)
 export const TICK = 1 / 20;
 const r2 = (v) => Math.round(v * 100) / 100;
 const r3 = (v) => Math.round(v * 1000) / 1000;
@@ -94,25 +94,46 @@ export class GameSim {
   }
 
   // ------------------------------------------------------------------ spawning
+  /** Where e comes back in: the points farthest from enemies and least crowded (campaign uses the checkpoint). */
   spawnPoint(e) {
     if (this.camp) return this.camp.checkpoint;
     const S = this.level.spawns;
     const list = this.mode === 'tdm' ? (e.team === 1 ? S.team1 : S.team2) : S.dm;
-    let scored = list.map((s) => {
-      let md = 1e9;
+    const scored = list.map((s) => {
+      let md = 60, near = 0;
       for (const o of this.ents.values()) if (o.alive && o !== e) {
         const d = Math.hypot(o.x - s.x, o.z - s.z);
-        md = Math.min(md, this.hostile(e, o) ? d : d < 1.2 ? 0 : 1e9);
+        if (d < 4) near++;
+        if (this.hostile(e, o)) md = Math.min(md, d);
       }
-      return { s, md };
+      return { s, score: md - near * 3 + Math.random() };
     });
-    scored.sort((a, b) => b.md - a.md);
-    scored = scored.slice(0, Math.max(1, Math.min(4, scored.length)));
-    return scored[(Math.random() * scored.length) | 0].s;
+    scored.sort((a, b) => b.score - a.score);
+    const top = scored.filter((c, i) => i < 4 && c.score > scored[0].score - 6), first = top[(Math.random() * top.length) | 0];
+    for (const c of [first, ...scored]) { const p = this.freeSpot(c.s, e); if (p) return p; }      // packed solid there: try the next point
+    return first.s;
+  }
+  /** s itself while nobody stands on it, otherwise a free spot next to it (null if there is none) — a full match has more players than spawn points. */
+  freeSpot(s, e) {
+    const y = (s.y || 0) + 0.02;
+    const taken = (x, z) => { for (const o of this.ents.values()) if (o.alive && o !== e && Math.hypot(o.x - x, o.z - z) < 1.3) return true; return false; };
+    if (!taken(s.x, s.z)) return s;
+    for (let ring = 1; ring <= 5; ring++) {
+      const r = ring * 1.4, n = ring * 6, a0 = Math.random() * 6.2832;
+      for (let k = 0; k < n; k++) {
+        const a = a0 + (k / n) * 6.2832, x = s.x + Math.sin(a) * r, z = s.z + Math.cos(a) * r;
+        if (this.nav.walkable(x, z) && this.nav.clear(s.x, s.z, x, z) && !this.world.blocked(x, y, z, PLAYER.height) && !taken(x, z)) return { ...s, x, z };
+      }
+    }
+    return null;
   }
   spawn(e, at) {
     const s = at || this.spawnPoint(e);
-    e.x = s.x + (at ? 0 : (Math.random() - 0.5) * 0.6); e.z = s.z + (at ? 0 : (Math.random() - 0.5) * 0.6); e.y = (s.y || 0) + 0.02;
+    e.x = s.x; e.z = s.z; e.y = (s.y || 0) + 0.02;
+    if (!at) {                                             // a little scatter, as long as it stays on open floor
+      const x = s.x + (Math.random() - 0.5) * 0.6, z = s.z + (Math.random() - 0.5) * 0.6;
+      if (this.nav.walkable(x, z) && !this.world.blocked(x, e.y, z, PLAYER.height)) { e.x = x; e.z = z; }
+    }
     e.yaw = s.yaw || 0; e.pitch = 0; e.vx = e.vy = e.vz = 0;
     e.hp = 100; e.alive = true; e.lastHurt = -99; e.flags = 0; e.grounded = true;
     if (e.ai) { const ai = e.ai; ai.target = null; ai.visible = false; ai.lastSeen = null; ai.path = null; ai.goal = null; ai.ammo = WEAPONS[e.weapon].mag; ai.reloadUntil = 0; }
@@ -208,7 +229,8 @@ export class GameSim {
   }
   restart() {
     this.phase = 'play'; this.timeLeft = this.opts.timeLimit; this.teamScore = [0, 0, 0];
-    for (const e of this.ents.values()) { e.kills = 0; e.deaths = 0; this.spawn(e); }
+    for (const e of this.ents.values()) { e.kills = 0; e.deaths = 0; e.alive = false; }      // everyone leaves the floor first, then is placed again
+    for (const e of this.ents.values()) this.spawn(e);
     for (const p of this.pickups) p.on = true;
     this.out.broadcast({ t: 'reset', pickups: this.pickups.map((p) => p.on) });
     this.out.broadcast(this.matchMsg());

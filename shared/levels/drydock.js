@@ -240,6 +240,7 @@ export default {
   id: 'drydock',
   name: 'Drydock',
   blurb: 'Harbour freight yard · rain at golden hour · close to mid range',
+  players: { min: 8, max: 24 },      // the match size this yard suits; the menu shows it (the game's own cap is MAX_PLAYERS)
   env: {
     hdri: 'belfast_sunset_puresky',
     sunAzimuth: 284,          // compass-style degrees the sun sits at (0 = north/-z, 90 = east); the HDRI is rotated to match
@@ -264,13 +265,13 @@ export default {
   ],
   spawns: {
     dm: [
-      spawn(-31, -25, 135), spawn(-31, 19, 45), spawn(31, 19, -45), spawn(31, -26, -135), spawn(0, -25, 180),
+      spawn(-31, -25, 135), spawn(-31, 19, 45), spawn(30.5, 20.3, -45), spawn(31, -27, -135), spawn(0, -25, 180),
       spawn(-16, -20, 120), spawn(-21, 6.5, 90), spawn(-10, 19, 20), spawn(6, 18.5, -10), spawn(18, 8, -90),
       spawn(27.5, 9, 0), spawn(13, -24, -160), spawn(-3, -6, 180), spawn(6.5, -9.5, 90), spawn(32, -14, -90),
       spawn(-32.5, -5, 90), spawn(16, 44, 0), spawn(-13.5, 6, 90), spawn(25, -24.6, 180), spawn(12.5, -3, -90),
     ],
     team1: [spawn(-31, -25, 120), spawn(-32, -16, 90), spawn(-32.5, -5, 90), spawn(-31, 8.5, 90), spawn(-31, 19, 60), spawn(-28, -24.5, 110), spawn(-24, 19.5, 50), spawn(-29, 5, 90)],
-    team2: [spawn(31, -26, -120), spawn(32, -14, -90), spawn(32, -6, -90), spawn(32, 8, -90), spawn(31, 19, -60), spawn(28, -25.5, -110), spawn(26, 19.5, -50), spawn(32, 14, -90)],
+    team2: [spawn(31, -27, -120), spawn(32, -14, -90), spawn(32, -6, -90), spawn(32, 8, -90), spawn(30.5, 20.3, -60), spawn(28, -25.5, -110), spawn(26, 19.5, -50), spawn(32, 14, -90)],
   },
   campaign: {
     title: 'LOW TIDE',
@@ -290,9 +291,9 @@ export default {
       { type: 'defend', text: 'Hold the warehouse until the boat returns', at: [-1, 0, -9], r: 9, time: 70,
         say: ['OVERWATCH', 'Good copy on the logs. Boat is seventy seconds out — they know you\'re here. Fall back to the warehouse and hold.'],
         waves: [
-          { t: 4, enemies: [{ at: [-30, -24], w: 'carbine' }, { at: [-32.4, 4.6], w: 'carbine' }, { at: [-28, 19], w: 'pistol' }, { at: [31, -25], w: 'carbine' }] },
-          { t: 26, enemies: [{ at: [-30, -24], w: 'carbine' }, { at: [31, 18], w: 'carbine' }, { at: [0, -26], w: 'carbine' }, { at: [-31, 8], w: 'marksman' }] },
-          { t: 48, enemies: [{ at: [-30, -24], w: 'carbine' }, { at: [31, -25], w: 'carbine' }, { at: [-28, 19], w: 'carbine' }, { at: [31, 18], w: 'carbine' }, { at: [0, -26], w: 'pistol' }] },
+          { t: 4, enemies: [{ at: [-30, -24], w: 'carbine' }, { at: [-32.4, 4.6], w: 'carbine' }, { at: [-28, 19], w: 'pistol' }, { at: [31, -24], w: 'carbine' }] },
+          { t: 26, enemies: [{ at: [-30, -24], w: 'carbine' }, { at: [29, 18], w: 'carbine' }, { at: [0, -26], w: 'carbine' }, { at: [-31, 8], w: 'marksman' }] },
+          { t: 48, enemies: [{ at: [-30, -24], w: 'carbine' }, { at: [31, -24], w: 'carbine' }, { at: [-28, 19], w: 'carbine' }, { at: [29, 18], w: 'carbine' }, { at: [0, -26], w: 'pistol' }] },
         ] },
       { type: 'reach', text: 'Get to the boat at the end of the pier', at: [16, 0, 43.5], r: 2.8,
         say: ['OVERWATCH', 'Boat is at the pier head. Move!'],

@@ -12,7 +12,8 @@ import { Characters } from './characters.js';
 import { Hud } from './hud.js';
 import { Game } from './game.js';
 import { LocalTransport, WsTransport } from './net.js';
-import { LEVELS, DEFAULT_LEVEL } from '../../shared/levels/index.js';
+import { LEVELS, DEFAULT_LEVEL, recommendedPlayers } from '../../shared/levels/index.js';
+import { MAX_PLAYERS } from '../../shared/sim.js';
 
 const $ = (s) => document.querySelector(s);
 const params = new URLSearchParams(location.search);
@@ -25,6 +26,7 @@ try { const s = JSON.parse(localStorage.getItem('irontide') || '{}'); settings =
 if (params.get('q')) settings.quality = params.get('q');
 if (!LEVELS[settings.q.level]) settings.q.level = DEFAULT_LEVEL;
 if (!['quick', 'campaign', 'multi'].includes(settings.mode)) settings.mode = 'quick';
+settings.q.bots = Math.max(1, Math.min(MAX_PLAYERS - 1, +settings.q.bots || defaults.q.bots)); settings.m.fill = Math.max(0, Math.min(MAX_PLAYERS, +settings.m.fill || 0));
 const save = () => { try { localStorage.setItem('irontide', JSON.stringify(settings)); } catch { /* ignore */ } };
 const getOpt = (path) => path.split('.').reduce((o, k) => o[k], settings);
 const setOpt = (path, v) => { const ks = path.split('.'), last = ks.pop(); ks.reduce((o, k) => o[k], settings)[last] = v; save(); applySettings(path); refreshUI(); };
@@ -72,6 +74,9 @@ function applySettings(path) {
 const camp = LEVELS[DEFAULT_LEVEL].campaign;
 const SKILL = { easy: 'Recruit', normal: 'Regular', hard: 'Veteran' };
 const GO = { quick: 'Drop in', campaign: 'Start mission', multi: 'Join room' };
+// the sliders go up to the game's cap; the band on each marks the size the level suits
+const SIZE = { 'q.bots': { max: MAX_PLAYERS - 1, others: 1 }, 'm.fill': { max: MAX_PLAYERS, others: 0 } };
+for (const [opt, o] of Object.entries(SIZE)) document.querySelector(`input[data-opt="${opt}"]`).max = o.max;
 function refreshUI() {
   for (const seg of document.querySelectorAll('.seg[data-opt]')) for (const b of seg.children) b.classList.toggle('on', String(getOpt(seg.dataset.opt)) === b.dataset.v);
   for (const i of document.querySelectorAll('input[data-opt]')) {
@@ -80,17 +85,25 @@ function refreshUI() {
   }
   for (const v of document.querySelectorAll('[data-val]')) v.textContent = getOpt(v.dataset.val);
   for (const g of document.querySelectorAll('[data-mode]')) g.classList.toggle('hidden', g.dataset.mode !== settings.mode);
-  const lvl = LEVELS[settings.q.level] || LEVELS[DEFAULT_LEVEL], q = settings.q, m = settings.m, mode = settings.mode;
-  $('#tbLevel').textContent = lvl.name; $('#tbBlurb').textContent = lvl.blurb || '';
+  const q = settings.q, m = settings.m, mode = settings.mode;
+  const lvl = (mode === 'quick' && LEVELS[q.level]) || LEVELS[DEFAULT_LEVEL], rec = recommendedPlayers(lvl);      // campaign and the server use the default level
+  const players = mode === 'multi' ? m.fill : q.bots + 1, crowded = mode !== 'campaign' && players > rec.max;
+  for (const [opt, o] of Object.entries(SIZE)) {
+    const i = document.querySelector(`input[data-opt="${opt}"]`), r = recommendedPlayers(opt === 'q.bots' ? LEVELS[q.level] || lvl : LEVELS[DEFAULT_LEVEL]);
+    const at = (n) => Math.max(0, Math.min(100, ((n - o.others - i.min) / (i.max - i.min)) * 100)) + '%';
+    i.style.setProperty('--rec0', at(r.min)); i.style.setProperty('--rec1', at(r.max)); i.closest('.rng').classList.toggle('over', +i.value + o.others > r.max);
+  }
+  $('#tbLevel').textContent = lvl.name; $('#tbBlurb').textContent = [lvl.blurb, `${rec.min}–${rec.max} players`].filter(Boolean).join(' · ');
   $('#kOp').textContent = 'Operation ' + camp.title; $('#kSite').textContent = lvl.name + ' sector';
   $('#goLabel').textContent = GO[mode];
   $('#pitch').textContent = mode === 'campaign' ? camp.brief
-    : mode === 'multi' ? 'Up to 32 players share a room. Empty slots are held by bots until someone takes them.'
+    : mode === 'multi' ? `Up to ${MAX_PLAYERS} players share a room. Empty slots are held by bots until someone takes them.`
     : `Live rounds in the ${lvl.name} yard. Set the opposition and fight for the quay.`;
   const b = (t) => `<b>${String(t).replace(/[&<>]/g, '')}</b>`;
   $('#summary').innerHTML = mode === 'campaign' ? `${b(camp.stages.length + ' objectives')} · solo · ${SKILL[settings.c.skill]} opposition`
-    : mode === 'multi' ? `Room ${b(m.room || 'public')} · ${{ dm: 'deathmatch', tdm: 'team deathmatch', campaign: 'co-op' }[m.mode]} if new · filled to ${m.fill} · 32 max`
+    : mode === 'multi' ? `Room ${b(m.room || 'public')} · ${{ dm: 'deathmatch', tdm: 'team deathmatch', campaign: 'co-op' }[m.mode]} if new · filled to ${m.fill} · ${MAX_PLAYERS} max`
     : `${b(q.mode === 'tdm' ? 'Team deathmatch' : 'Deathmatch')} · ${q.bots} bot${q.bots === 1 ? '' : 's'} · ${SKILL[q.skill]} · ${lvl.name}`;
+  if (crowded) $('#summary').insertAdjacentHTML('beforeend', `<span class="warn">Crowded · ${lvl.name} plays best with ${rec.min}–${rec.max} players</span>`);
 }
 const menuMsg = (text, info = false) => { const el = $('#menuMsg'); el.textContent = text || ''; el.classList.toggle('info', info); };
 function openDrawer(id) {

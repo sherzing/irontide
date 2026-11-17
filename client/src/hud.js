@@ -120,10 +120,16 @@ export class Hud {
   banner(title, sub = '', sub2 = '') { const b = this.d.banner; b.classList.toggle('hidden', !title); if (title) { b.querySelector('h1').textContent = title; b.querySelector('p').textContent = sub; b.querySelector('.s').textContent = sub2; } }
   scoreboard(show, data) {
     const el = this.d.score; if (this.set('sbOn', !!show)) el.classList.toggle('hidden', !show); if (!show || !data) return;
-    const rows = [...data.rows].sort((a, b) => (data.teams ? a.team - b.team : 0) || b.k - a.k || a.d - b.d);
-    const html = `<h3>${esc(data.title)}</h3><div class="sub lbl">${rows.length} in the yard${data.teams ? ' · blue vs red' : ''}</div><table><tr><th>Player</th><th class="n">Kills</th><th class="n">Deaths</th></tr>${rows.map((r) =>
-      `<tr class="${r.me ? 'me ' : ''}${data.teams ? 't' + r.team : ''}"><td>${esc(r.name)}${r.bot ? '<span class="bot">BOT</span>' : ''}</td><td class="n">${r.k}</td><td class="n">${r.d}</td></tr>`).join('')}</table>`;
-    if (this.set('sbHtml', html)) el.innerHTML = html;
+    const rows = [...data.rows].sort((a, b) => b.k - a.k || a.d - b.d || (a.name < b.name ? -1 : 1));
+    // one table per column, so that a full 64-player match fits on screen: the two teams side by side, or the
+    // free-for-all ranking split into two or three columns. Row height shrinks with the longest column (--n in ui.css).
+    let cols;
+    if (data.teams) cols = [1, 2].map((t) => ({ cls: 't' + t, head: t === 1 ? 'Blue team' : 'Red team', rows: rows.filter((r) => r.team === t), from: 0 }));
+    else { const n = rows.length > 40 ? 3 : rows.length > 16 ? 2 : 1, per = Math.ceil(rows.length / n); cols = Array.from({ length: n }, (_, c) => ({ cls: '', head: 'Player', rows: rows.slice(c * per, (c + 1) * per), from: c * per })); }
+    const table = (c) => `<table class="${c.cls}"><tr><th class="r">#</th><th>${c.head}</th><th class="n">Kills</th><th class="n">Deaths</th></tr>${c.rows.map((r, i) =>
+      `<tr class="${r.me ? 'me' : ''}"><td class="r">${c.from + i + 1}</td><td>${esc(r.name)}${r.bot ? '<span class="bot">BOT</span>' : ''}</td><td class="n">${r.k}</td><td class="n">${r.d}</td></tr>`).join('')}</table>`;
+    const html = `<h3>${esc(data.title)}</h3><div class="sub lbl">${rows.length} in the yard${data.teams ? ' · blue vs red' : ''}</div><div class="cols">${cols.map(table).join('')}</div>`;
+    if (this.set('sbHtml', html)) { el.innerHTML = html; el.dataset.cols = cols.length; el.style.setProperty('--n', Math.max(8, ...cols.map((c) => c.rows.length))); }
   }
 
   // ------------------------------------------------------------------ compass

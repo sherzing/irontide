@@ -52,7 +52,9 @@ button.wide { width: 100%; }
 input[type=text] { font: 500 calc(var(--px) * 17) var(--f-ui); letter-spacing: 0.04em; background: rgba(6, 9, 11, 0.5); border: 1px solid var(--line); border-bottom-color: var(--line2); color: var(--ink); padding: calc(var(--px) * 6) calc(var(--px) * 10); width: calc(var(--px) * 232); outline: none; user-select: text; -webkit-user-select: text; }
 input[type=text]::placeholder { color: var(--mute); }
 input[type=text]:focus { border-color: var(--acc); }
-input[type=range] { -webkit-appearance: none; appearance: none; width: calc(var(--px) * 200); height: calc(var(--px) * 18); background: none; cursor: pointer; margin: 0; }
+/* --rec0/--rec1 (set from the menu code) draw a band behind the track over the match size the level suits */
+input[type=range] { -webkit-appearance: none; appearance: none; width: calc(var(--px) * 200); height: calc(var(--px) * 18); cursor: pointer; margin: 0;
+  background: linear-gradient(90deg, transparent var(--rec0, 0%), rgba(79, 216, 196, 0.3) var(--rec0, 0%), rgba(79, 216, 196, 0.3) var(--rec1, 0%), transparent var(--rec1, 0%)) center / 100% calc(var(--px) * 8) no-repeat; }
 input[type=range]::-webkit-slider-runnable-track { height: 2px; background: linear-gradient(90deg, var(--acc) var(--fill, 50%), var(--line2) var(--fill, 50%)); }
 input[type=range]::-moz-range-track { height: 2px; background: var(--line2); }
 input[type=range]::-moz-range-progress { height: 2px; background: var(--acc); }
@@ -60,6 +62,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: calc(
 input[type=range]::-moz-range-thumb { width: calc(var(--px) * 9); height: calc(var(--px) * 18); background: var(--acc); border: 0; border-radius: 0; }
 .rng { display: inline-flex; align-items: center; gap: calc(var(--px) * 12); }
 .val { min-width: calc(var(--px) * 30); text-align: right; font: 700 calc(var(--px) * 13) var(--f-mono); color: var(--acc-hi); font-variant-numeric: tabular-nums; }
+.rng.over .val { color: var(--warn); }
 .row { display: flex; align-items: center; gap: calc(var(--px) * 18); min-height: calc(var(--px) * 46); }
 .row > label { flex: none; width: calc(var(--px) * 108); font: 500 calc(var(--px) * 11.5) var(--f-mono); letter-spacing: 0.2em; text-transform: uppercase; color: var(--dim); }
 kbd { display: inline-block; min-width: calc(var(--px) * 23); padding: calc(var(--px) * 2.5) calc(var(--px) * 6); text-align: center; font: 700 calc(var(--px) * 11.5) var(--f-mono); letter-spacing: 0.04em; color: var(--ink); background: rgba(6, 9, 11, 0.55); border: 1px solid var(--line2); border-bottom: 2px solid var(--acc-lo); border-radius: calc(var(--px) * 3); }
@@ -107,6 +110,7 @@ h1.logo span { color: var(--acc); }
 .opts .two .row + .row > label { width: auto; }
 .summary { margin-top: calc(var(--px) * 12); padding-top: calc(var(--px) * 10); border-top: 1px solid var(--line); width: calc(var(--px) * 640); font: 500 calc(var(--px) * 11.5) var(--f-mono); letter-spacing: 0.2em; text-transform: uppercase; color: var(--mute); }
 .summary b { color: var(--acc-hi); font-weight: 500; }
+.summary .warn { display: block; margin-top: calc(var(--px) * 6); color: var(--warn); }
 
 .legend { position: absolute; right: calc(var(--px) * 34); bottom: calc(var(--px) * 46); display: flex; flex-direction: column; align-items: flex-end; gap: calc(var(--px) * 9); transition: opacity 0.2s; }
 .legend div { display: flex; align-items: center; gap: calc(var(--px) * 15); }
@@ -249,14 +253,22 @@ h1.logo span { color: var(--acc); }
 #banner p { margin: calc(var(--px) * 6) 0; font: 600 calc(var(--px) * 26) var(--f-head); letter-spacing: 0.2em; text-transform: uppercase; }
 #banner p.s { font: 500 calc(var(--px) * 12.5) var(--f-mono); letter-spacing: 0.24em; color: var(--dim); }
 
-#scoreboard { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: calc(var(--px) * 720); max-height: 82vh; overflow: hidden; background: rgba(6, 9, 11, 0.86); border: 1px solid var(--line); border-top: 2px solid var(--acc); padding: calc(var(--px) * 20) calc(var(--px) * 26) calc(var(--px) * 18); text-shadow: none; }
+/* --n = rows in the longest column (set by hud.js); the row height follows it so 64 players still fit in 82vh */
+#scoreboard { position: absolute; z-index: 3; left: 50%; top: 50%; transform: translate(-50%, -50%); width: calc(var(--px) * 720); max-height: 82vh; overflow: hidden; background: rgba(6, 9, 11, 0.86); border: 1px solid var(--line); border-top: 2px solid var(--acc); padding: calc(var(--px) * 20) calc(var(--px) * 26) calc(var(--px) * 18); text-shadow: none;
+  --n: 12; --rh: min(calc(var(--px) * 27), calc((82vh - var(--px) * 136) / var(--n))); }
+#scoreboard[data-cols="2"] { width: calc(var(--px) * 1040); } #scoreboard[data-cols="3"] { width: calc(var(--px) * 1360); }
 #scoreboard h3 { margin: 0; font: 400 calc(var(--px) * 30) / 1 var(--f-logo); letter-spacing: 0.1em; text-transform: uppercase; }
 #scoreboard .sub { margin: calc(var(--px) * 5) 0 calc(var(--px) * 12); }
-#scoreboard table { width: 100%; border-collapse: collapse; font: 500 calc(var(--px) * 18) var(--f-ui); letter-spacing: 0.04em; }
-#scoreboard th { text-align: left; padding: calc(var(--px) * 4) calc(var(--px) * 10); border-bottom: 1px solid var(--line); font: 500 calc(var(--px) * 10.5) var(--f-mono); letter-spacing: 0.2em; text-transform: uppercase; color: var(--dim); }
-#scoreboard td { padding: calc(var(--px) * 2.5) calc(var(--px) * 10); border-left: 3px solid transparent; }
+#scoreboard .cols { display: flex; align-items: flex-start; gap: calc(var(--px) * 24); }
+#scoreboard table { flex: 1 1 0; min-width: 0; table-layout: fixed; border-collapse: collapse; font: 500 min(calc(var(--px) * 18), calc(var(--rh) * 0.68)) / 1 var(--f-ui); letter-spacing: 0.04em; }
+#scoreboard th { text-align: left; padding: calc(var(--px) * 4) calc(var(--px) * 10); border-bottom: 1px solid var(--line); font: 500 calc(var(--px) * 10.5) var(--f-mono); letter-spacing: 0.2em; text-transform: uppercase; color: var(--dim); white-space: nowrap; }
+#scoreboard td { height: var(--rh); padding: 0 calc(var(--px) * 10); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #scoreboard tr.me td { background: rgba(79, 216, 196, 0.15); color: var(--acc-hi); }
-#scoreboard .t1 td:first-child { border-left-color: var(--blue); } #scoreboard .t2 td:first-child { border-left-color: var(--red); }
+#scoreboard td.r, #scoreboard th.r { width: calc(var(--px) * 40); padding-right: 0; text-align: right; border-left: 3px solid transparent; color: var(--mute); font-variant-numeric: tabular-nums; }
+#scoreboard td.r { font: 500 min(calc(var(--px) * 11), calc(var(--rh) * 0.5)) var(--f-mono); }
+#scoreboard .t1 td.r { border-left-color: var(--blue); } #scoreboard .t2 td.r { border-left-color: var(--red); }
+#scoreboard .t1 th:nth-child(2) { color: var(--blue); } #scoreboard .t2 th:nth-child(2) { color: var(--red); }
 #scoreboard td.n, #scoreboard th.n { text-align: right; width: calc(var(--px) * 84); font-variant-numeric: tabular-nums; }
-#scoreboard td.n { font: 700 calc(var(--px) * 14) var(--f-mono); }
-#scoreboard .bot { margin-left: calc(var(--px) * 8); font: 500 calc(var(--px) * 9.5) var(--f-mono); letter-spacing: 0.16em; color: var(--mute); }
+#scoreboard[data-cols="3"] td.n, #scoreboard[data-cols="3"] th.n { width: calc(var(--px) * 72); }
+#scoreboard td.n { font: 700 min(calc(var(--px) * 14), calc(var(--rh) * 0.56)) var(--f-mono); }
+#scoreboard .bot { margin-left: calc(var(--px) * 8); font: 500 min(calc(var(--px) * 9.5), calc(var(--rh) * 0.4)) var(--f-mono); letter-spacing: 0.16em; color: var(--mute); }

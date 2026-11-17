@@ -3,9 +3,9 @@
 Browser first-person shooter (three.js / WebGL2). One small level — **Drydock**, a harbour freight yard with rain
 clearing at golden hour and a feeder ship alongside — with three ways to play:
 
-- **Quick match** – deathmatch or team deathmatch against 1–31 bots (three skill levels)
+- **Quick match** – deathmatch or team deathmatch against 1–63 bots (three skill levels)
 - **Campaign** – "Low Tide", a six-objective mission on Drydock (also playable co-op via multiplayer)
-- **Multiplayer** – dedicated WebSocket server, rooms of up to **32 players**, bots fill empty slots
+- **Multiplayer** – dedicated WebSocket server, rooms of up to **64 players**, bots fill empty slots
 
 ## Run
 
@@ -36,6 +36,14 @@ Other machines join by opening `http://<your-ip>:8787` (or entering `<your-ip>:8
 
 Solo modes run the very same `GameSim` in-process (`LocalTransport`), so quick match, campaign and multiplayer share one code path.
 
+## Match size
+
+The game caps a match at 64 players, humans and bots together (`MAX_PLAYERS` in `shared/sim.js`). That is the game's limit,
+not a level's: each level says what size it suits with `players: { min, max }` — Drydock is 8–24. The menu shows that range
+next to the level name and as a band on the bot and fill sliders, and warns when a match is set larger; `/status` reports it
+per room. A level without the field gets an estimate from its floor area (`recommendedPlayers` in `shared/levels/index.js`).
+When a match has more players than the level has spawn points, players are placed on free floor next to them.
+
 ## Rendering
 
 Each frame: sun shadow map → planar reflection of everything above the ground plane (wet asphalt, puddles) → the scene
@@ -48,8 +56,8 @@ when frames get slow (the HUD's bottom-left line shows fps and the current resol
 ## Adding a level
 
 1. Copy `shared/levels/drydock.js` to a new file and change the geometry. A level is data: `solids` (boxes with a material),
-   `containers`, `props` (models from `shared/props.js`), `lights`, `decals`, `pickups`, `spawns`, `dressing`, `env`, `shots`
-   and optionally a `campaign` (stages of type `reach`, `eliminate`, `interact`, `defend`).
+   `containers`, `props` (models from `shared/props.js`), `lights`, `decals`, `pickups`, `spawns`, `dressing`, `env`, `shots`,
+   `players` (the match size it suits) and optionally a `campaign` (stages of type `reach`, `eliminate`, `interact`, `defend`).
 2. Register it in `shared/levels/index.js`.
 
 `dressing` is visual-only scenery placed with `dress(type, {...})` from the kit and built by `client/src/dressing.js`:
@@ -70,8 +78,8 @@ draws a top-down plan with colliders, spawns and objectives, and `client/vmlab.h
 ## Tests
 
 ```bash
-node scripts/sim-test.mjs                      # 32-bot match, team match, full campaign run (no browser)
-node scripts/net-test.mjs ws://localhost:8787  # joins 32 clients, checks the 33rd is refused
+node scripts/sim-test.mjs                      # 64-player match, spawn checks, team match, full campaign run (no browser)
+node scripts/net-test.mjs ws://localhost:8787  # joins 64 clients, checks the 65th is refused
 node scripts/play-test.mjs /tmp/shot "http://localhost:8787/?auto=dm&bots=6"   # drives a match in headless Chromium
 ```
 
