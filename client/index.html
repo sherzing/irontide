@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IRONTIDE</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/src/ui.css">
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<!-- ============================================================ in-game HUD -->
+<div id="hud" class="hidden">
+  <div id="crosshair"><i class="l"></i><i class="r"></i><i class="u"></i><i class="d"></i><i class="dot"></i></div>
+  <div id="hitmarker"></div>
+  <div id="dmgdir"></div>
+  <div id="compass"><canvas></canvas></div>
+  <div id="match" class="hidden"><span class="s s1"><span></span><b></b></span><span class="t">0:00</span><span class="s s2"><b></b><span></span></span></div>
+  <div id="objective" class="hidden">
+    <div class="k"><span>Objective</span><span class="pips"></span><span class="idx"></span></div>
+    <div class="x"></div>
+    <div class="p"><i></i></div>
+    <div class="e"></div>
+  </div>
+  <div id="killfeed"></div>
+  <div id="marker" class="hidden"></div>
+  <div id="subtitle"></div>
+  <div id="prompt" class="hidden"><span></span><i></i></div>
+  <div id="health" class="vital">
+    <div class="lbl">Vitals</div>
+    <div class="rowh"><div class="n">100</div><div class="segs"></div></div>
+  </div>
+  <div id="ammo" class="vital">
+    <div class="w lbl"><span class="name"></span><span class="mode"></span></div>
+    <div class="n"><span class="mag">30</span><span class="res">150</span></div>
+    <div class="ticks"></div>
+    <div class="rl"><i></i><span>Reloading</span></div>
+    <div class="others"></div>
+  </div>
+  <div id="chat"><div id="chatlog"></div><input id="chatin" class="hidden" maxlength="120" placeholder="Message — Enter to send"></div>
+  <div id="netstat"></div>
+  <div id="death" class="hidden"><h2>DOWN</h2><div class="bar"></div><p></p></div>
+  <div id="banner" class="hidden"><h1></h1><div class="bar"></div><p></p><p class="s"></p></div>
+  <div id="scoreboard" class="hidden"></div>
+</div>
+
+<!-- ============================================================ opening screen -->
+<div id="menu" class="screen hidden">
+  <header class="topbar">
+    <div><span class="mark"><i></i><i></i><i></i></span><span class="wm">IRON<span>TIDE</span></span><span class="sep"></span><span class="lbl">Harbour assault · first-person shooter</span></div>
+    <div><span class="lbl live">Theatre</span><b id="tbLevel"></b><span class="sep"></span><span class="lbl" id="tbBlurb"></span></div>
+  </header>
+
+  <section class="hero">
+    <div class="kicker"><span class="mark"><i></i><i></i><i></i></span><b id="kOp"></b><i class="dot"></i><span id="kSite"></span><i class="dot"></i><span>54°19′N 010°08′E</span></div>
+    <div class="brand"><h1 class="logo">IRON<span>TIDE</span></h1><div class="ruler"><i></i></div></div>
+    <p class="pitch" id="pitch"></p>
+    <div class="actions">
+      <button class="go" id="go"><span id="goLabel">Drop in</span><svg viewBox="0 0 26 14" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M0 7h23M17 1l6 6-6 6"/></svg></button>
+      <button class="ghost" data-drawer="settings">Settings</button>
+      <button class="ghost" data-drawer="controls">Controls</button>
+    </div>
+    <div class="msg" id="menuMsg"></div>
+    <div class="opts">
+      <div class="row"><label>Mode</label><div class="seg" data-opt="mode"><button data-v="quick">Quick match</button><button data-v="campaign">Campaign</button><button data-v="multi">Multiplayer</button></div></div>
+      <div data-mode="quick">
+        <div class="row"><label>Game type</label><div class="seg" data-opt="q.mode"><button data-v="dm">Deathmatch</button><button data-v="tdm">Team deathmatch</button></div></div>
+        <div class="row"><label>Level</label><div class="seg" data-opt="q.level" id="levels"></div></div>
+        <div class="two">
+          <div class="row"><label>Bots</label><div class="rng"><input type="range" min="1" max="31" data-opt="q.bots"><span class="val" data-val="q.bots"></span></div></div>
+          <div class="row"><label>Skill</label><div class="seg" data-opt="q.skill"><button data-v="easy">Recruit</button><button data-v="normal">Regular</button><button data-v="hard">Veteran</button></div></div>
+        </div>
+      </div>
+      <div data-mode="campaign" class="hidden">
+        <div class="row"><label>Mission</label><div class="mission" id="brief"></div></div>
+        <div class="row"><label>Difficulty</label><div class="seg" data-opt="c.skill"><button data-v="easy">Recruit</button><button data-v="normal">Regular</button><button data-v="hard">Veteran</button></div></div>
+      </div>
+      <div data-mode="multi" class="hidden">
+        <div class="two">
+          <div class="row"><label>Callsign</label><input type="text" maxlength="16" data-opt="name" spellcheck="false"></div>
+          <div class="row"><label>Room</label><input type="text" maxlength="24" data-opt="m.room" spellcheck="false"></div>
+        </div>
+        <div class="two">
+          <div class="row"><label>Server</label><input type="text" data-opt="m.server" placeholder="this host" spellcheck="false"></div>
+          <div class="row"><label>If new</label><div class="seg" data-opt="m.mode"><button data-v="dm">DM</button><button data-v="tdm">TDM</button><button data-v="campaign">Co-op</button></div></div>
+        </div>
+        <div class="row"><label>Fill to</label><div class="rng"><input type="range" min="0" max="32" data-opt="m.fill"><span class="val" data-val="m.fill"></span></div><span class="lbl">players, bots take empty slots</span></div>
+      </div>
+    </div>
+    <div class="summary" id="summary"></div>
+  </section>
+
+  <aside class="legend">
+    <div><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><em>Move</em></span><span><kbd>Mouse</kbd><em>Look</em></span><span><kbd>LMB</kbd><em>Fire</em></span><span><kbd>RMB</kbd><em>Aim</em></span><span><kbd>R</kbd><em>Reload</em></span></div>
+    <div><span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><em>Weapons</em></span><span><kbd>F</kbd><em>Interact</em></span><span><kbd>Space</kbd><em>Jump</em></span><span><kbd>Shift</kbd><em>Sprint</em></span><span><kbd>C</kbd><em>Crouch</em></span></div>
+    <div><span><kbd>Tab</kbd><em>Scores</em></span><span><kbd>Enter</kbd><em>Chat</em></span><span><kbd>Esc</kbd><em>Pause</em></span></div>
+  </aside>
+
+  <aside class="drawer" id="drawer-settings">
+    <button class="x" data-close aria-label="Close">×</button>
+    <h2>SETTINGS</h2>
+    <div class="sub lbl">Saved in this browser</div>
+    <div class="row"><label>Graphics</label><div class="seg" data-opt="quality"><button data-v="low">Low</button><button data-v="medium">Medium</button><button data-v="high">High</button><button data-v="ultra">Ultra</button></div></div>
+    <div class="row"><label>Dynamic resolution</label><div class="seg" data-opt="dynres"><button data-v="on">On</button><button data-v="off">Off</button></div></div>
+    <div class="row"><label>Mouse sensitivity</label><div class="rng"><input type="range" min="2" max="40" data-opt="sens"><span class="val" data-val="sens"></span></div></div>
+    <div class="row"><label>Field of view</label><div class="rng"><input type="range" min="60" max="100" data-opt="fov"><span class="val" data-val="fov"></span></div></div>
+    <div class="row"><label>Volume</label><div class="rng"><input type="range" min="0" max="100" data-opt="volume"><span class="val" data-val="volume"></span></div></div>
+    <p class="note">Graphics presets change resolution, shadows, ambient occlusion and anti-aliasing. If the frame rate is low, step down one preset.</p>
+  </aside>
+
+  <aside class="drawer" id="drawer-controls">
+    <button class="x" data-close aria-label="Close">×</button>
+    <h2>CONTROLS</h2>
+    <div class="sub lbl">Keyboard and mouse</div>
+    <div class="keys">
+      <h3>Movement</h3>
+      <div class="k"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></div><div class="d">Move</div>
+      <div class="k"><kbd>Shift</kbd></div><div class="d">Sprint</div>
+      <div class="k"><kbd>Ctrl</kbd><kbd>C</kbd></div><div class="d">Crouch</div>
+      <div class="k"><kbd>Space</kbd></div><div class="d">Jump</div>
+      <h3>Weapons</h3>
+      <div class="k"><kbd>LMB</kbd></div><div class="d">Fire</div>
+      <div class="k"><kbd>RMB</kbd></div><div class="d">Aim down sights / scope</div>
+      <div class="k"><kbd>R</kbd></div><div class="d">Reload</div>
+      <div class="k"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></div><div class="d">Carbine, rifle, sidearm</div>
+      <div class="k"><kbd>Wheel</kbd></div><div class="d">Cycle weapons</div>
+      <h3>Other</h3>
+      <div class="k"><kbd>F</kbd></div><div class="d">Interact (hold)</div>
+      <div class="k"><kbd>Tab</kbd></div><div class="d">Scoreboard</div>
+      <div class="k"><kbd>Enter</kbd></div><div class="d">Chat (multiplayer)</div>
+      <div class="k"><kbd>Esc</kbd></div><div class="d">Pause, release the mouse</div>
+    </div>
+  </aside>
+</div>
+
+<!-- ============================================================ pause -->
+<div id="pause" class="screen hidden">
+  <div class="card">
+    <h2>PAUSED</h2>
+    <div class="sub lbl">Esc or Resume to continue</div>
+    <div class="row"><label>Graphics</label><div class="seg" data-opt="quality"><button data-v="low">Low</button><button data-v="medium">Med</button><button data-v="high">High</button><button data-v="ultra">Ultra</button></div></div>
+    <div class="row"><label>Dynamic res</label><div class="seg" data-opt="dynres"><button data-v="on">On</button><button data-v="off">Off</button></div></div>
+    <div class="row"><label>Sensitivity</label><div class="rng"><input type="range" min="2" max="40" data-opt="sens"><span class="val" data-val="sens"></span></div></div>
+    <div class="row"><label>Field of view</label><div class="rng"><input type="range" min="60" max="100" data-opt="fov"><span class="val" data-val="fov"></span></div></div>
+    <div class="row"><label>Volume</label><div class="rng"><input type="range" min="0" max="100" data-opt="volume"><span class="val" data-val="volume"></span></div></div>
+    <button class="go" id="resume"><span>Resume</span></button>
+    <button class="wide" id="quit">Quit to menu</button>
+  </div>
+</div>
+
+<!-- ============================================================ loading -->
+<div id="loading" class="screen">
+  <div class="kicker"><span class="mark"><i></i><i></i><i></i></span><b>Stand by</b></div>
+  <div class="brand"><h1 class="logo">IRON<span>TIDE</span></h1><div class="bar"><i></i></div></div>
+  <p id="loadmsg">Loading</p>
+</div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,202 @@
+// Boot, settings, menus and the main loop.
+import * as THREE from 'three';
+import { Engine } from './engine.js';
+import { buildLevel } from './levelbuild.js';
+import { setAnisotropy } from './materials.js';
+import { FX } from './fx.js';
+import { Rain } from './rain.js';
+import { G } from './globals.js';
+import { GameAudio } from './audio.js';
+import { ViewModel } from './viewmodel.js';
+import { Characters } from './characters.js';
+import { Hud } from './hud.js';
+import { Game } from './game.js';
+import { LocalTransport, WsTransport } from './net.js';
+import { LEVELS, DEFAULT_LEVEL } from '../../shared/levels/index.js';
+
+const $ = (s) => document.querySelector(s);
+const params = new URLSearchParams(location.search);
+
+// ---------------------------------------------------------------- settings
+const defaults = { mode: 'quick', quality: 'high', dynres: 'on', sens: 14, fov: 78, volume: 80, name: 'Player' + ((Math.random() * 900 + 100) | 0),
+  q: { mode: 'dm', level: DEFAULT_LEVEL, bots: 9, skill: 'normal' }, c: { skill: 'normal' }, m: { server: '', room: 'public', mode: 'tdm', fill: 12 } };
+let settings = structuredClone(defaults);
+try { const s = JSON.parse(localStorage.getItem('irontide') || '{}'); settings = { ...defaults, ...s, q: { ...defaults.q, ...s.q }, c: { ...defaults.c, ...s.c }, m: { ...defaults.m, ...s.m } }; } catch { /* storage unavailable */ }
+if (params.get('q')) settings.quality = params.get('q');
+if (!LEVELS[settings.q.level]) settings.q.level = DEFAULT_LEVEL;
+if (!['quick', 'campaign', 'multi'].includes(settings.mode)) settings.mode = 'quick';
+const save = () => { try { localStorage.setItem('irontide', JSON.stringify(settings)); } catch { /* ignore */ } };
+const getOpt = (path) => path.split('.').reduce((o, k) => o[k], settings);
+const setOpt = (path, v) => { const ks = path.split('.'), last = ks.pop(); ks.reduce((o, k) => o[k], settings)[last] = v; save(); applySettings(path); refreshUI(); };
+
+// ---------------------------------------------------------------- engine + world
+const engine = new Engine($('#c'), settings.quality);
+setAnisotropy(engine.q.aniso);
+const audio = new GameAudio(); audio.volume = settings.volume / 100;
+const fx = new FX(engine);
+const rain = new Rain(engine);
+engine.dynamic = settings.dynres !== 'off' && params.get('dr') !== '0';
+const vm = new ViewModel(engine, fx);
+const chars = new Characters(engine);
+const hud = new Hud();
+const loaded = new Map();
+let current = null;
+const progress = (p, msg) => { $('#loading .bar i').style.width = Math.round(p * 100) + '%'; if (msg) $('#loadmsg').textContent = msg; };
+
+async function ensureLevel(id) {
+  const level = LEVELS[id] || LEVELS[DEFAULT_LEVEL];
+  if (current?.level === level) return current;
+  $('#loading').classList.remove('hidden'); progress(0.05, 'Loading ' + level.name);
+  if (current) { engine.scene.remove(current.built.root); current.built.deactivate(); }
+  await engine.loadEnvironment(level.env, level.bounds); progress(0.35);
+  let built = loaded.get(level.id);
+  if (!built) { built = await buildLevel(level, engine, (p) => progress(0.35 + p * 0.6)); loaded.set(level.id, built); } else { engine.scene.add(built.root); built.activate(); }
+  current = { level, built };
+  audio.setWeather(level.env.weather?.rain || 0);
+  const b = level.bounds, s0 = level.shots?.[0];                                         // warm up behind the loading screen
+  await engine.precompile(s0 ? s0.from : [(b.minX + b.maxX) / 2, 30, b.maxZ], s0 ? s0.look : [(b.minX + b.maxX) / 2, 0, (b.minZ + b.maxZ) / 2]);
+  $('#loading').classList.add('hidden');
+  return current;
+}
+
+const game = new Game({ engine, fx, audio, vm, hud, chars, settings, ensureLevel });
+game.onKicked = (why) => toMenu(why);
+
+function applySettings(path) {
+  if (!path || path === 'quality') { if (engine.qualityName !== settings.quality) { engine.setQuality(settings.quality); setAnisotropy(engine.q.aniso); rain.build(); } }
+  if (!path || path === 'dynres') { engine.dynamic = settings.dynres !== 'off' && params.get('dr') !== '0'; if (!engine.dynamic && engine.dyn !== 1) { engine.dyn = 1; engine.fit(); } }
+  if (!path || path === 'volume') audio.setVolume(settings.volume / 100);
+}
+
+// ---------------------------------------------------------------- menu wiring
+const camp = LEVELS[DEFAULT_LEVEL].campaign;
+const SKILL = { easy: 'Recruit', normal: 'Regular', hard: 'Veteran' };
+const GO = { quick: 'Drop in', campaign: 'Start mission', multi: 'Join room' };
+function refreshUI() {
+  for (const seg of document.querySelectorAll('.seg[data-opt]')) for (const b of seg.children) b.classList.toggle('on', String(getOpt(seg.dataset.opt)) === b.dataset.v);
+  for (const i of document.querySelectorAll('input[data-opt]')) {
+    if (document.activeElement !== i) i.value = getOpt(i.dataset.opt);
+    if (i.type === 'range') i.style.setProperty('--fill', ((i.value - i.min) / (i.max - i.min)) * 100 + '%');
+  }
+  for (const v of document.querySelectorAll('[data-val]')) v.textContent = getOpt(v.dataset.val);
+  for (const g of document.querySelectorAll('[data-mode]')) g.classList.toggle('hidden', g.dataset.mode !== settings.mode);
+  const lvl = LEVELS[settings.q.level] || LEVELS[DEFAULT_LEVEL], q = settings.q, m = settings.m, mode = settings.mode;
+  $('#tbLevel').textContent = lvl.name; $('#tbBlurb').textContent = lvl.blurb || '';
+  $('#kOp').textContent = 'Operation ' + camp.title; $('#kSite').textContent = lvl.name + ' sector';
+  $('#goLabel').textContent = GO[mode];
+  $('#pitch').textContent = mode === 'campaign' ? camp.brief
+    : mode === 'multi' ? 'Up to 32 players share a room. Empty slots are held by bots until someone takes them.'
+    : `Live rounds in the ${lvl.name} yard. Set the opposition and fight for the quay.`;
+  const b = (t) => `<b>${String(t).replace(/[&<>]/g, '')}</b>`;
+  $('#summary').innerHTML = mode === 'campaign' ? `${b(camp.stages.length + ' objectives')} · solo · ${SKILL[settings.c.skill]} opposition`
+    : mode === 'multi' ? `Room ${b(m.room || 'public')} · ${{ dm: 'deathmatch', tdm: 'team deathmatch', campaign: 'co-op' }[m.mode]} if new · filled to ${m.fill} · 32 max`
+    : `${b(q.mode === 'tdm' ? 'Team deathmatch' : 'Deathmatch')} · ${q.bots} bot${q.bots === 1 ? '' : 's'} · ${SKILL[q.skill]} · ${lvl.name}`;
+}
+const menuMsg = (text, info = false) => { const el = $('#menuMsg'); el.textContent = text || ''; el.classList.toggle('info', info); };
+function openDrawer(id) {
+  for (const d of document.querySelectorAll('.drawer')) d.classList.toggle('open', d.id === 'drawer-' + id && !d.classList.contains('open'));
+  $('#menu').classList.toggle('drawer-open', !!document.querySelector('.drawer.open'));
+}
+$('#levels').innerHTML = Object.values(LEVELS).map((l) => `<button data-v="${l.id}">${l.name}</button>`).join('');
+$('#brief').innerHTML = `<b>${camp.title}</b>${camp.stages.length} objectives · ${LEVELS[DEFAULT_LEVEL].name}`;
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) { if (!e.target.closest('.drawer')) openDrawer(null); return; }
+  audio.start(); audio.ui('click');
+  const seg = b.closest('.seg[data-opt]'); if (seg) setOpt(seg.dataset.opt, b.dataset.v);
+  if (b.dataset.drawer) openDrawer(b.dataset.drawer);
+  else if ('close' in b.dataset || !b.closest('.drawer')) openDrawer(null);
+});
+document.addEventListener('input', (e) => { const i = e.target; if (i.dataset?.opt) setOpt(i.dataset.opt, i.type === 'range' ? +i.value : i.value); });
+
+let inMenu = true;
+function toMenu(msg) {
+  game.stop(); inMenu = true; $('#menu').classList.remove('hidden'); $('#pause').classList.add('hidden');
+  engine.camera.fov = 55; engine.camera.updateProjectionMatrix();
+  menuMsg(msg || '');
+}
+async function play(makeTransport) {
+  audio.start();
+  try {
+    const t = await makeTransport();
+    inMenu = false; $('#menu').classList.add('hidden'); $('#pause').classList.add('hidden'); openDrawer(null); menuMsg('');
+    await game.start(t, settings.name);
+    t.onClose = (why) => toMenu(why);
+    engine.canvas.requestPointerLock?.()?.catch?.(() => {});
+  } catch (err) { toMenu(err.message || String(err)); }
+}
+const playLocal = (opts) => play(async () => new LocalTransport(opts, settings.name));
+const startQuick = () => playLocal({ mode: settings.q.mode, level: settings.q.level, fill: settings.q.bots + 1, skill: settings.q.skill });
+const startCampaign = () => playLocal({ mode: 'campaign', level: DEFAULT_LEVEL, skill: settings.c.skill });
+const startMulti = () => { menuMsg('Connecting…', true); play(async () => {
+  let host = settings.m.server.trim() || location.host;
+  host = host.replace(/^(https?|wss?):\/\//, '').replace(/\/+$/, '');
+  const proto = location.protocol === 'https:' && !settings.m.server.trim() ? 'wss' : 'ws';
+  const q = new URLSearchParams({ name: settings.name, room: settings.m.room || 'public', mode: settings.m.mode, fill: settings.m.fill });
+  const t = new WsTransport(`${proto}://${host}/ws?${q}`); await t.ready; return t;
+}); };
+$('#go').onclick = () => ({ quick: startQuick, campaign: startCampaign, multi: startMulti })[settings.mode]();
+$('#resume').onclick = () => { $('#pause').classList.add('hidden'); game.setPaused(false); engine.canvas.requestPointerLock?.()?.catch?.(() => {}); };
+$('#quit').onclick = () => toMenu();
+document.addEventListener('pointerlockchange', () => {
+  if (!game.active || game.chatting) return;
+  if (!document.pointerLockElement) { game.setPaused(true); $('#pause').classList.remove('hidden'); }
+});
+addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' && game.active && game.ended && game.mode === 'campaign') toMenu();
+  else if (e.code === 'Escape' && inMenu) openDrawer(null);
+  else if (e.code === 'Enter' && inMenu && e.target.matches?.('.hero input[type=text]')) { e.target.blur(); $('#go').click(); }
+});
+
+// ---------------------------------------------------------------- boot
+progress(0.02, 'Loading assets');
+await Promise.all([chars.load(), vm.load()]);
+vm.root.visible = false;
+await ensureLevel(settings.q.level);
+refreshUI();
+$('#menu').classList.remove('hidden');
+engine.camera.fov = 55; engine.camera.updateProjectionMatrix();
+
+const clock = new THREE.Clock();
+let frames = 0, fpsT = 0, fps = 0, menuT = 0;
+const _from = new THREE.Vector3(), _to = new THREE.Vector3();
+/** Menu backdrop: slow dolly shots defined by the level (env.shots), or a fallback orbit. */
+function menuCamera(dt) {
+  menuT += dt;
+  const level = current.level, shots = level.shots, cam = engine.camera;
+  if (shots?.length) {
+    const total = shots.reduce((n, s) => n + s.dur, 0); let t = menuT % total, i = 0;
+    while (t >= shots[i].dur) { t -= shots[i].dur; i++; }
+    const s = shots[i], k = t / s.dur, e = k * k * (3 - 2 * k) * 0.6 + k * 0.4;
+    cam.position.copy(_from.fromArray(s.from)).lerp(_to.fromArray(s.to), e);
+    cam.lookAt(_from.fromArray(s.look).lerp(_to.fromArray(s.lookTo || s.look), e));
+    if (cam.fov !== (s.fov || 55)) { cam.fov = s.fov || 55; cam.updateProjectionMatrix(); }
+    engine.fade = Math.min(1, t / 0.9, (s.dur - t) / 0.9);            // dip to black across each cut
+  } else {
+    const b = level.bounds, cx = (b.minX + b.maxX) / 2, cz = (b.minZ + Math.min(b.maxZ, b.minZ + 52)) / 2, a = menuT * 0.035 + 2.2;
+    cam.position.set(cx + Math.cos(a) * 30, 5.5 + Math.sin(menuT * 0.11) * 1.2, cz + Math.sin(a) * 24); cam.lookAt(cx + 4, 2.2, cz);
+  }
+  cam.rotation.order = 'YXZ';
+}
+function loop() {
+  const dt = Math.min(clock.getDelta(), 0.1);
+  frames++; fpsT += dt; if (fpsT >= 0.5) { fps = Math.round(frames / fpsT); frames = 0; fpsT = 0; hud.netstat(`${fps} fps${game.net && !game.net.local ? ` · ${game.net.ping} ms` : ''} · ${engine.qualityName}${engine.dyn < 0.99 ? ` · ${Math.round(engine.dyn * 100)}% res` : ''}`); }
+  if (inMenu && current) menuCamera(dt); else { engine.fade = 1; game.frame(dt); }
+  current?.built.update(engine.time);
+  fx.update(dt, engine.camera);
+  rain.update(dt, engine.camera);
+  if (current) { const c = engine.camera.position, sh = current.built.cover.at(c.x, c.z) > c.y + 0.5 ? 1 : 0; audio.setShelter(sh, dt); engine.shelter += (sh - engine.shelter) * Math.min(1, dt * 2); }
+  engine.render(dt);
+  window.__frames = (window.__frames || 0) + 1;
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// debugging / automated tests
+window.__irontide = { game, engine, settings, playLocal, toMenu, vm, chars, fx, rain, G };
+if (params.get('auto')) {
+  const a = params.get('auto');
+  if (a === 'campaign') startCampaign();
+  else if (a === 'multi') startMulti();
+  else playLocal({ mode: a === 'tdm' ? 'tdm' : 'dm', level: settings.q.level, fill: +(params.get('bots') || 9) + 1, skill: params.get('skill') || 'normal' });
+}
