@@ -1,4 +1,4 @@
-// Dev viewer: /dev.html?p=x,y,z&yaw=deg&pitch=deg&q=high[&fov=75]  — renders the level from a fixed camera (used for screenshots).
+// Dev viewer: /dev.html?level=id&p=x,y,z&yaw=deg&pitch=deg&q=high[&fov=75][&env={json}]  — renders the level from a fixed camera (used for screenshots).
 import * as THREE from 'three';
 import { Engine, QUALITY } from './engine.js';
 import { buildLevel } from './levelbuild.js';
@@ -12,6 +12,7 @@ const engine = new Engine(document.getElementById('c'), q.get('q') || 'high');
 engine.dynamic = false; setAnisotropy(engine.q.aniso);
 const level = LEVELS[q.get('level') || DEFAULT_LEVEL];
 const env = { ...level.env }; if (q.get('hdri')) env.hdri = q.get('hdri'); if (q.get('az')) env.sunAzimuth = +q.get('az'); if (q.get('el')) env.sunElevation = +q.get('el');
+if (q.get('env')) Object.assign(env, JSON.parse(q.get('env')));      // &env={"bloom":{"strength":0}} replaces whole keys of the level's env, for tuning
 await engine.loadEnvironment(env, level.bounds);
 const built = await buildLevel(level, engine);
 const rain = new Rain(engine);

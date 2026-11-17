@@ -3,6 +3,7 @@
 export const PLAYER = { radius: 0.38, height: 1.8, crouchHeight: 1.25, eye: 1.62, crouchEye: 1.05, step: 0.5 };
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const CELL = 8, PAD = 1;      // broadphase cell size and the widest query one cell answers, metres
 
 export class World {
   /** boxes: [{c:[x,y,z], h:[hx,hy,hz], yaw, surf, solid, bullet, sight}] (c = centre, h = half extents) */
@@ -15,9 +16,41 @@ export class World {
         cos: Math.cos(yaw), sin: Math.sin(yaw), br: Math.hypot(b.h[0], b.h[2]),
         minY: b.c[1] - b.h[1], maxY: b.c[1] + b.h[1],
         surf: b.surf || 'concrete',
-        solid: b.solid !== false, bullet: b.bullet !== false, sight: b.sight !== false,
+        solid: b.solid !== false, bullet: b.bullet !== false, sight: b.sight !== false, q: 0,
       };
     });
+    this.stamp = 0;
+    this.buildGrid();
+  }
+
+  /**
+   * Broadphase: a uniform grid over x/z. Every box is listed in each cell its footprint touches, grown by PAD, so a
+   * query no wider than PAD only has to look at the one cell it stands in. Keeps large levels as cheap as small ones.
+   */
+  buildGrid() {
+    this.grid = null;
+    if (!this.boxes.length) return;
+    let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+    for (const b of this.boxes) {
+      b.ex = Math.abs(b.hx * b.cos) + Math.abs(b.hz * b.sin); b.ez = Math.abs(b.hx * b.sin) + Math.abs(b.hz * b.cos);
+      x0 = Math.min(x0, b.cx - b.ex); x1 = Math.max(x1, b.cx + b.ex); z0 = Math.min(z0, b.cz - b.ez); z1 = Math.max(z1, b.cz + b.ez);
+    }
+    x0 -= PAD; z0 -= PAD; x1 += PAD; z1 += PAD;
+    const nx = Math.max(1, Math.ceil((x1 - x0) / CELL)), nz = Math.max(1, Math.ceil((z1 - z0) / CELL));
+    const cells = Array.from({ length: nx * nz }, () => []);
+    for (const b of this.boxes) {
+      const i0 = Math.max(0, Math.floor((b.cx - b.ex - PAD - x0) / CELL)), i1 = Math.min(nx - 1, Math.floor((b.cx + b.ex + PAD - x0) / CELL));
+      const j0 = Math.max(0, Math.floor((b.cz - b.ez - PAD - z0) / CELL)), j1 = Math.min(nz - 1, Math.floor((b.cz + b.ez + PAD - z0) / CELL));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) cells[j * nx + i].push(b);
+    }
+    this.grid = { x0, z0, x1: x0 + nx * CELL, z1: z0 + nz * CELL, nx, nz, cells };
+  }
+  /** The boxes that can touch a vertical cylinder of the given radius standing at (x, z). */
+  near(x, z, radius = 0) {
+    const g = this.grid;
+    if (!g || radius > PAD) return this.boxes;
+    const i = Math.max(0, Math.min(g.nx - 1, Math.floor((x - g.x0) / CELL))), j = Math.max(0, Math.min(g.nz - 1, Math.floor((z - g.z0) / CELL)));
+    return g.cells[j * g.nx + i];
   }
 
   /** Moves a vertical cylinder (feet at p). Mutates p and v. Returns {grounded, surf}. */
@@ -29,8 +62,9 @@ export class World {
     const sdt = dt / steps;
     for (let s = 0; s < steps; s++) {
       p.x += v.x * sdt; p.y += v.y * sdt; p.z += v.z * sdt;
+      const list = this.near(p.x, p.z, R);
       for (let iter = 0; iter < 2; iter++) {
-        for (const b of this.boxes) {
+        for (const b of list) {
           if (!b.solid) continue;
           if (p.y >= b.maxY || p.y + height <= b.minY) continue;
           const dx = p.x - b.cx, dz = p.z - b.cz;
@@ -71,7 +105,7 @@ export class World {
   /** True if a standing cylinder at p would intersect something solid (ignores floors below `lift`). */
   blocked(x, y, z, height, radius = PLAYER.radius, lift = 0.05) {
     const R2 = radius * radius;
-    for (const b of this.boxes) {
+    for (const b of this.near(x, z, radius)) {
       if (!b.solid) continue;
       if (y + lift >= b.maxY || y + height <= b.minY) continue;
       const dx = x - b.cx, dz = z - b.cz, reach = b.br + radius;
@@ -85,9 +119,34 @@ export class World {
 
   /** Ray vs world. kind: 'bullet' | 'sight' | 'solid'. Returns {t,nx,ny,nz,surf} or null. */
   raycast(ox, oy, oz, dx, dy, dz, maxT = 1e9, kind = 'bullet') {
-    let best = maxT, hit = null;
-    for (const b of this.boxes) {
-      if (!b[kind]) continue;
+    const hit = { t: -1, nx: 0, ny: 0, nz: 0, surf: null }, g = this.grid, stamp = ++this.stamp;
+    if (!g) { this.rayList(this.boxes, ox, oy, oz, dx, dy, dz, maxT, kind, hit, stamp); return hit.t < 0 ? null : hit; }
+    // clip the ray to the grid, then walk the cells it crosses, nearest first
+    let t0 = 0, t1 = maxT;
+    if (Math.abs(dx) < 1e-9) { if (ox < g.x0 || ox > g.x1) return null; }
+    else { const inv = 1 / dx, a = (g.x0 - ox) * inv, c = (g.x1 - ox) * inv; t0 = Math.max(t0, Math.min(a, c)); t1 = Math.min(t1, Math.max(a, c)); }
+    if (Math.abs(dz) < 1e-9) { if (oz < g.z0 || oz > g.z1) return null; }
+    else { const inv = 1 / dz, a = (g.z0 - oz) * inv, c = (g.z1 - oz) * inv; t0 = Math.max(t0, Math.min(a, c)); t1 = Math.min(t1, Math.max(a, c)); }
+    if (t0 > t1) return null;
+    const sx = ox + dx * t0, sz = oz + dz * t0;
+    let i = Math.max(0, Math.min(g.nx - 1, Math.floor((sx - g.x0) / CELL))), j = Math.max(0, Math.min(g.nz - 1, Math.floor((sz - g.z0) / CELL)));
+    const stepI = dx > 0 ? 1 : -1, stepJ = dz > 0 ? 1 : -1;
+    const dtx = Math.abs(dx) < 1e-9 ? Infinity : CELL / Math.abs(dx), dtz = Math.abs(dz) < 1e-9 ? Infinity : CELL / Math.abs(dz);
+    let tx = dtx === Infinity ? Infinity : ((g.x0 + (i + (dx > 0 ? 1 : 0)) * CELL) - ox) / dx, tz = dtz === Infinity ? Infinity : ((g.z0 + (j + (dz > 0 ? 1 : 0)) * CELL) - oz) / dz;
+    let best = maxT;
+    for (;;) {
+      best = this.rayList(g.cells[j * g.nx + i], ox, oy, oz, dx, dy, dz, best, kind, hit, stamp);
+      const leave = Math.min(tx, tz);
+      if (best <= leave || leave > t1) break;                       // nothing in a later cell can be nearer
+      if (tx < tz) { i += stepI; tx += dtx; if (i < 0 || i >= g.nx) break; } else { j += stepJ; tz += dtz; if (j < 0 || j >= g.nz) break; }
+    }
+    return hit.t < 0 ? null : hit;
+  }
+  /** Tests the ray against a list of boxes; fills `hit` and returns the nearest distance found so far. */
+  rayList(list, ox, oy, oz, dx, dy, dz, best, kind, hit, stamp) {
+    for (const b of list) {
+      if (!b[kind] || b.q === stamp) continue;
+      b.q = stamp;
       const rx = ox - b.cx, rz = oz - b.cz;
       const lox = rx * b.cos - rz * b.sin, loz = rx * b.sin + rz * b.cos, loy = oy - b.cy;
       const ldx = dx * b.cos - dz * b.sin, ldz = dx * b.sin + dz * b.cos;
@@ -118,16 +177,14 @@ export class World {
         if (t0 > t1) continue;
       }
       if (axis < 0) continue; // origin inside the box
-      best = t0;
-      hit = hit || {};
-      hit.t = t0; hit.surf = b.surf;
+      best = t0; hit.t = t0; hit.surf = b.surf;
       if (axis === 1) { hit.nx = 0; hit.ny = sign; hit.nz = 0; }
       else {
         const lnx = axis === 0 ? sign : 0, lnz = axis === 2 ? sign : 0;
         hit.nx = lnx * b.cos + lnz * b.sin; hit.ny = 0; hit.nz = -lnx * b.sin + lnz * b.cos;
       }
     }
-    return hit;
+    return best;
   }
 
   /** Line of sight between two points. */

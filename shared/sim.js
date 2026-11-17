@@ -18,10 +18,12 @@ export class GameSim {
     this.opts = { level: DEFAULT_LEVEL, mode: 'dm', fill: 8, skill: 'normal', timeLimit: 600, ...opts };
     this.level = LEVELS[this.opts.level] || LEVELS[DEFAULT_LEVEL];
     this.mode = this.opts.mode;
+    if (this.mode === 'campaign' && !this.level.campaign) this.level = Object.values(LEVELS).find((l) => l.campaign);   // only some levels have a mission
+    this.opts.level = this.level.id;
     this.opts.scoreLimit ??= this.mode === 'tdm' ? 50 : 25;
     this.out = out;
     this.world = new World(levelColliders(this.level));
-    this.nav = new NavGrid(this.world, this.level.bounds);
+    this.nav = new NavGrid(this.world, this.level.bounds, this.level.navCell);
     this.ents = new Map();
     this.time = 0; this.tickN = 0; this.nextBotId = 1000;
     this.phase = 'play'; this.endAt = 0; this.timeLeft = this.opts.timeLimit;

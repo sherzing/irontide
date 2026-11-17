@@ -18,6 +18,7 @@ export const QUALITY = {
   ultra: { scale: 1, dpr: 2, shadow: 4096, msaa: 4, ao: 1, vol: 32, refl: 0.75, aniso: 16, rain: 1.4, lights: 16, pointShadows: true },
 };
 const MAX_GLOW = 16;
+const SHADOW_FIT = 200, SHADOW_RANGE = 80;   // widest level one shadow map covers whole (m) · ground radius the travelling one covers (m)
 const VS = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
 
 // ---- sun shafts: march the view ray through height fog, sampling the sun's shadow map; plus analytic lamp glow
@@ -311,6 +312,13 @@ export class Engine {
       sx += Math.cos(th) * Math.cos(phi) * l; sy += Math.sin(th) * l; sz += Math.cos(th) * Math.sin(phi) * l;
     }
     const raw = new THREE.Vector3(sx, sy, sz).normalize();
+    // A clear-sky photograph holds the sun's disc at tens of thousands of units: bloom would white out the whole frame
+    // whenever it is in view. The directional light is the sun here, so the picture's own may be capped (env.sunCap).
+    if (env.sunCap) {
+      const cap = env.sunCap;
+      for (let i = 0; i < data.length; i += stride) { const m = Math.max(data[i], data[i + 1], data[i + 2]); if (m > cap) { const k = cap / m; data[i] *= k; data[i + 1] *= k; data[i + 2] *= k; } }
+      tex.needsUpdate = true;
+    }
     const az = THREE.MathUtils.degToRad(env.sunAzimuth ?? 200);
     const want = new THREE.Vector3(Math.sin(az), 0, -Math.cos(az));
     const rot = Math.atan2(raw.z, raw.x) - Math.atan2(want.z, want.x);     // rotate sky about Y
@@ -331,9 +339,36 @@ export class Engine {
       v.set(x - s.position.x, y - s.position.y, z - s.position.z).applyMatrix4(inv); bb.expandByPoint(v);
     }
     cam.left = bb.min.x; cam.right = bb.max.x; cam.bottom = bb.min.y; cam.top = bb.max.y;
-    cam.near = 10; cam.far = -bb.min.z + 30; cam.updateProjectionMatrix();
+    cam.near = 10; cam.far = -bb.min.z + 30;
+    // A level too wide for one shadow map to stay sharp gets a frustum that travels with the camera instead (see followShadow)
+    const range = env.shadowRange ?? (Math.max(bb.max.x - bb.min.x, (bb.max.y - bb.min.y) / Math.max(0.2, this.sunDir.y)) > SHADOW_FIT ? SHADOW_RANGE : 0);
+    this.shadowFollow = null;
+    if (range > 0) {
+      const sin = Math.max(0.2, this.sunDir.y), cos = Math.sqrt(1 - this.sunDir.y * this.sunDir.y), top = bounds.maxY ?? 14, dist = range + 300;
+      cam.left = -range; cam.right = range; cam.bottom = -range * sin - 2; cam.top = range * sin + top * cos + 2;
+      cam.near = 1; cam.far = dist + range + 40;
+      const z = this.sunDir.clone(), x = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), z).normalize(), y = new THREE.Vector3().crossVectors(z, x);
+      this.shadowFollow = { range, dist, x, y, z, lead: range * 0.45 };
+      this.followShadow();
+    }
+    cam.updateProjectionMatrix();
     s.shadow.bias = -0.0005; s.shadow.normalBias = 0.035; s.shadow.radius = 2.4;
     this.env = env; this.applyEnv(env);
+  }
+
+  /**
+   * Centres the sun's shadow frustum on the ground ahead of the camera. It moves in whole shadow-map texels, so the
+   * shadows do not crawl while the player walks. Only used on levels wider than SHADOW_FIT.
+   */
+  followShadow() {
+    const f = this.shadowFollow, s = this.sun, cam = s.shadow.camera, n = s.shadow.mapSize.x;
+    const dir = this.camera.getWorldDirection(_b); dir.y = 0; if (dir.lengthSq() > 1e-6) dir.normalize();
+    const p = _a.setFromMatrixPosition(this.camera.matrixWorld).addScaledVector(dir, f.lead); p.y = 0;
+    const tx = (cam.right - cam.left) / n, ty = (cam.top - cam.bottom) / n;
+    const px = Math.round(p.dot(f.x) / tx) * tx, py = Math.round(p.dot(f.y) / ty) * ty, pz = p.dot(f.z);
+    s.target.position.set(0, 0, 0).addScaledVector(f.x, px).addScaledVector(f.y, py).addScaledVector(f.z, pz);
+    s.position.copy(s.target.position).addScaledVector(f.z, f.dist);
+    s.updateMatrixWorld(); s.target.updateMatrixWorld();
   }
 
   /** Applies the parts of a level environment that do not need assets (also re-run on quality change). */
@@ -430,6 +465,7 @@ export class Engine {
     const want = (1 - (this.env?.glare ?? 0.45) * facing * facing * Math.sqrt(facing)) * (1 + this.shelter * (this.env?.indoorBoost ?? 0.3));
     this.eye += (want - this.eye) * Math.min(1, dt * 1.6);
     r.shadowMap.needsUpdate = (this.frame = (this.frame || 0) + 1) % (q.shadowEvery || 1) === 0 || !this.sun.shadow.map;   // shadow maps render in the first scene pass
+    if (r.shadowMap.needsUpdate && this.shadowFollow) this.followShadow();
     if (this.reflRT && this.reflectY != null) this.renderReflection(); else G.uReflOn.value = 0;
     r.setRenderTarget(this.sceneRT); r.render(this.scene, cam);
     this.stats.calls = r.info.render.calls; this.stats.tris = r.info.render.triangles;

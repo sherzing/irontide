@@ -29,6 +29,19 @@ export const PROP_DEFS = {
   metal_tool_chest: P([-0.34, -0.19, -0.16], [0.34, 0.31, 0.15]),
   industrial_storage_cart: P([-0.80, 0, -0.55], [0.80, 1.38, 0.55]),
   vintage_radio_transceiver: P([-0.18, -0.11, -0.23], [0.30, 0.33, 0.17], 'metal', false),
+  // Breakers
+  portable_welding_cart: P([-0.42, 0, -0.39], [0.42, 1.56, 0.27]),
+  small_lpg_tank: P([-0.20, 0, -0.20], [0.21, 0.64, 0.20]),
+  Barrel_02: P([-0.24, 0, -0.24], [0.24, 0.88, 0.24]),
+  rusted_wheel_rim_01: P([-0.20, -0.20, -0.08], [0.20, 0.20, 0.08], 'metal', false),
+  lateral_sea_marker: P([-1.50, -1.28, -1.50], [1.50, 5.56, 1.50], 'metal', true, { colMin: [-1.1, -1.28, -1.1], colMax: [1.1, 1.6, 1.1] }),
+  // Crosswind
+  covered_car: P([-0.85, 0, -2.17], [0.94, 1.41, 2.21], 'dirt'),
+  tool_cart: P([-0.66, 0, -0.38], [0.62, 0.96, 0.37]),
+  steel_frame_shelves_01: P([-5.49, -0.01, -2.51], [5.49, 21.39, 2.51], 'metal', true, { scale: 0.1 }),      // the file is ten times life size
+  utility_box_02: P([-0.46, 0, -0.21], [0.46, 1.12, 0.22]),
+  metal_jerrycan_green: P([-0.19, 0, -0.09], [0.17, 0.50, 0.09], 'metal', false),
+  concrete_road_barrier_02: P([-0.78, 0, -0.25], [0.79, 1.11, 0.19], 'concrete'),
 };
 
 export const CONTAINER = { L: 6.06, H: 2.59, W: 2.44 };
@@ -44,7 +57,7 @@ export function levelColliders(level) {
   for (const p of level.props || []) {
     const d = PROP_DEFS[p.model];
     if (!d || !d.collide || p.collide === false) continue;
-    const s = p.scale || 1, mn = d.colMin || d.min, mx = d.colMax || d.max;
+    const s = (p.scale || 1) * (d.scale || 1), mn = d.colMin || d.min, mx = d.colMax || d.max;
     const hx = (mx[0] - mn[0]) / 2 * s, hy = (mx[1] - mn[1]) / 2 * s, hz = (mx[2] - mn[2]) / 2 * s;
     const ox = (mx[0] + mn[0]) / 2 * s, oz = (mx[2] + mn[2]) / 2 * s;
     const yaw = p.yaw || 0, cs = Math.cos(yaw), sn = Math.sin(yaw);

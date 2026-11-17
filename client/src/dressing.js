@@ -1,11 +1,13 @@
 // Scenery builders: procedural set dressing a level asks for by name in its `dressing` list
 // (see shared/levels/kit.js `dress`). Purely visual — collision always comes from the level's solids.
 //   gantry · stsCrane · ship · lightMast · stacks · sign · skyline · breakwater · cones · pallets · bollards
-//   fenders · razorWire · rope · rails
+//   fenders · razorWire · rope · rails — plus the shipbreaking-yard set (dressing-yard.js) and the airfield set (dressing-airfield.js)
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { getMaterial, canvasTex, patchSurface } from './materials.js';
 import { CONTAINER } from '../../shared/props.js';
+import { addYardBuilders } from './dressing-yard.js';
+import { addAirfieldBuilders } from './dressing-airfield.js';
 
 const V = (a) => new THREE.Vector3(a[0], a[1], a[2]);
 const UP = new THREE.Vector3(0, 1, 0);
@@ -18,6 +20,8 @@ export class Kit {
   get M() { return this.frames[this.frames.length - 1].m; }
   get yaw() { return this.frames[this.frames.length - 1].yaw; }
   push(x = 0, y = 0, z = 0, yaw = 0) { const f = this.frames[this.frames.length - 1]; this.frames.push({ m: f.m.clone().multiply(new THREE.Matrix4().makeRotationY(yaw).setPosition(x, y, z)), yaw: f.yaw + yaw }); }
+  /** Enters a frame given by any matrix (a tilt, a roll); signs and containers keep the yaw passed along. */
+  pushM(m, yaw = 0) { const f = this.frames[this.frames.length - 1]; this.frames.push({ m: f.m.clone().multiply(m), yaw: f.yaw + yaw }); }
   pop() { this.frames.pop(); }
   world(x, y, z) { return new THREE.Vector3(x, y, z).applyMatrix4(this.M); }
   put(mat, geo, color, local) {
@@ -53,6 +57,12 @@ export class Kit {
     for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * Math.max(1, Math.round((r0 * 6.3) / 2.2)), (uv.getY(i) * len) / 2.2);
     this.put(mat, g, color, new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(UP, d)).setPosition(A.add(B).multiplyScalar(0.5)));
   }
+  /** Ball or, with the scale factors, an ellipsoid. */
+  sphere(mat, x, y, z, r, color, sx = 1, sy = 1, sz = 1, seg = 12) {
+    const g = new THREE.SphereGeometry(r, seg, Math.max(6, Math.round(seg * 0.7))), uv = g.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * Math.max(1, Math.round((r * 6.3 * sx) / 2.2)), uv.getY(i) * Math.max(1, Math.round((r * 3.1 * sy) / 2.2)));
+    this.put(mat, g, color, new THREE.Matrix4().makeScale(sx, sy, sz).setPosition(x, y, z));
+  }
   /** Flat quad a,b,c,d (counter-clockwise from the visible side); UVs in metres along its edges. */
   quad(mat, a, b, c, d, color, uvScale = 2.2) {
     const A = V(a), B = V(b), C = V(c), D = V(d), g = new THREE.BufferGeometry();
@@ -83,6 +93,14 @@ export class Kit {
       let material;
       if (key === 'glow') material = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
       else if (key === 'glass') material = new THREE.MeshStandardMaterial({ color: 0x0b1116, roughness: 0.06, metalness: 0.92, vertexColors: true, envMapIntensity: 1.3 });
+      // untextured paints are scaled down so that a given colour sits beside the textured materials, whose images are darker than their tint
+      else if (key === 'gloss') material = patchSurface(new THREE.MeshStandardMaterial({ color: new THREE.Color(0.8, 0.8, 0.8), roughness: 0.42, metalness: 0.15, vertexColors: true }), { macro: false, dark: 0.9 });       // clean paint: aircraft, vehicles
+      else if (key === 'matte') material = patchSurface(new THREE.MeshStandardMaterial({ color: new THREE.Color(0.6, 0.6, 0.6), roughness: 1, metalness: 0, vertexColors: true }), { macro: true, dark: 0.8 });      // cloth, foliage, earth
+      else if (key === 'chainlink') {
+        const map = canvasTex(128, (g, s) => { g.clearRect(0, 0, s, s); g.strokeStyle = '#c9ccd0'; g.lineWidth = 7; for (const d of [1, -1]) for (let i = -2; i <= 2; i++) { g.beginPath(); g.moveTo(s * (i - 0.5), d > 0 ? 0 : s); g.lineTo(s * (i + 0.5), d > 0 ? s : 0); g.stroke(); } });
+        map.wrapS = map.wrapT = THREE.RepeatWrapping; map.repeat.set(2.2 / 0.11, 2.2 / 0.11);      // one diamond every 11 cm
+        material = new THREE.MeshStandardMaterial({ map, transparent: true, depthWrite: false, side: THREE.DoubleSide, roughness: 0.55, metalness: 0.6, vertexColors: true });
+      }
       else if (key === 'dark') material = patchSurface(new THREE.MeshStandardMaterial({ roughness: 0.75, metalness: 0.1, vertexColors: true }), { macro: false, dark: 0.85 });
       else if (key === 'hazard') {
         const map = canvasTex(256, (g, s) => { g.fillStyle = '#d6a21a'; g.fillRect(0, 0, s, s); g.strokeStyle = '#16140f'; g.lineWidth = 46; for (let i = -s; i < s * 2; i += 128) { g.beginPath(); g.moveTo(i, s + 8); g.lineTo(i + s + 16, -8); g.stroke(); } });
@@ -91,7 +109,7 @@ export class Kit {
       } else material = await getMaterial(key);
       const mesh = new THREE.Mesh(mergeGeometries(geos, false), material);
       const lit = key !== 'glow';
-      mesh.castShadow = lit; mesh.receiveShadow = lit; mesh.name = 'dress:' + key;
+      mesh.castShadow = lit && key !== 'chainlink'; mesh.receiveShadow = lit; mesh.name = 'dress:' + key;
       root.add(mesh); geos.forEach((g) => g.dispose());
     }
     for (const s of this.signs) root.add(makeSign(s));
@@ -287,31 +305,33 @@ B.ship = (k, o) => {
     k.box('paint', hx, y + dh / 2, 0, l, dh, w, house);
     k.box('paint', hx, y + dh + 0.04, 0, l + 1.0, 0.1, w + 1.6, '#9c9a92');
     for (let wx = -l / 2 + 1.1; wx < l / 2 - 0.6; wx += 1.7) for (const sz of [-1, 1]) {
-      const lit = R() < 0.42; k.box(lit ? 'glow' : 'glass', hx + wx, y + 1.55, sz * (w / 2 + 0.02), 0.8, 0.62, 0.05, lit ? [2.6, 2.0, 1.15] : '#ffffff');
+      const lit = !o.dead && R() < 0.42; k.box(lit ? 'glow' : 'glass', hx + wx, y + 1.55, sz * (w / 2 + 0.02), 0.8, 0.62, 0.05, lit ? [2.6, 2.0, 1.15] : '#ffffff');
     }
-    for (let wz = -w / 2 + 1.0; wz < w / 2 - 0.5; wz += 1.6) { const lit = R() < 0.4; k.box(lit ? 'glow' : 'glass', hx + l / 2 + 0.02, y + 1.55, wz, 0.05, 0.62, 0.8, lit ? [2.6, 2.0, 1.15] : '#ffffff'); }
+    for (let wz = -w / 2 + 1.0; wz < w / 2 - 0.5; wz += 1.6) { const lit = !o.dead && R() < 0.4; k.box(lit ? 'glow' : 'glass', hx + l / 2 + 0.02, y + 1.55, wz, 0.05, 0.62, 0.8, lit ? [2.6, 2.0, 1.15] : '#ffffff'); }
     for (const sz of [-1, 1]) { for (let rx = -l / 2 - 0.5; rx <= l / 2 + 0.5; rx += 1.9) k.cyl('steel', [hx + rx, y + dh + 0.08, sz * (w / 2 + 0.75)], [hx + rx, y + dh + 1.1, sz * (w / 2 + 0.75)], 0.022, 0.022, '#cfcfcf', 5); k.cyl('steel', [hx - l / 2 - 0.5, y + dh + 1.1, sz * (w / 2 + 0.75)], [hx + l / 2 + 0.5, y + dh + 1.1, sz * (w / 2 + 0.75)], 0.022, 0.022, '#cfcfcf', 5); }
   }
   const by = deck + decks * dh;                                                                                   // bridge
   k.box('paint', hx + 0.6, by + 1.3, 0, hl - 4.5, 2.6, beam + 2.4, house);
   k.box('glass', hx + 0.6 + (hl - 4.5) / 2 + 0.03, by + 1.65, 0, 0.05, 0.9, beam + 1.9, '#ffffff');
   for (const sz of [-1, 1]) k.box('glass', hx + 0.6, by + 1.65, sz * (beam / 2 + 1.22), hl - 5.4, 0.9, 0.05, '#ffffff');
-  k.box('glow', hx + 0.6, by + 0.9, 0, hl - 5.2, 0.05, beam * 0.6, [0.5, 0.42, 0.3]);
+  if (!o.dead) k.box('glow', hx + 0.6, by + 0.9, 0, hl - 5.2, 0.05, beam * 0.6, [0.5, 0.42, 0.3]);
   k.box('paint', hx + 0.6, by + 2.66, 0, hl - 3.6, 0.12, beam + 3, '#9c9a92');
   k.box('paint', hx - 3.2, by + 4.6, 0, 3.4, 6.2, 4.4, hull); k.box('paint', hx - 3.2, by + 5.6, 0, 3.5, 1.5, 4.5, accent);               // funnel
   for (const sz of [-0.9, 0.9]) k.cyl('dark', [hx - 3.4, by + 7.6, sz], [hx - 3.7, by + 9.0, sz], 0.32, 0.28, '#101010', 8);
   k.cyl('paint', [hx + 2.2, by + 2.7, 0], [hx + 2.2, by + 10.5, 0], 0.22, 0.12, house, 8);                                               // mast
   k.box('paint', hx + 2.2, by + 7.6, 0, 0.2, 0.2, 5.2, house); k.box('paint', hx + 2.5, by + 6.4, 0, 0.16, 0.3, 2.8, '#eeeeee');
-  k.lamp(hx + 2.2, by + 10.7, 0, [10, 10, 9], 0.14); k.lamp(hx + 2.2, by + 7.8, -2.6, [10, 0.5, 0.3], 0.12); k.lamp(hx + 2.2, by + 7.8, 2.6, [0.4, 9, 2], 0.12);
+  if (!o.dead) { k.lamp(hx + 2.2, by + 10.7, 0, [10, 10, 9], 0.14); k.lamp(hx + 2.2, by + 7.8, -2.6, [10, 0.5, 0.3], 0.12); k.lamp(hx + 2.2, by + 7.8, 2.6, [0.4, 9, 2], 0.12); }
   k.push(hx - 0.5, deck + 2 * dh + 1.7, -hw / 2 - 1.6);                                                                               // lifeboat on the quay side
   k.cyl('paint', [-3.1, 0, 0], [3.1, 0, 0], 1.1, 1.1, '#d2551e', 10); k.box('paint', 0, 0.75, 0, 3.4, 0.9, 1.5, '#d2551e');
   for (const e of [-2.4, 2.4]) { k.beam('paint', [e, -1.3, 1.3], [e, 2.2, 0.9], 0.2, 0.2, house); k.beam('paint', [e, 2.2, 0.9], [e, 2.0, -0.5], 0.2, 0.2, house); }
   k.pop();
-  k.light(hx + hl / 2 + 3, deck + 6, 0, 0xffe2b8, 500, 46, { glow: 0.6, range: 10, bulb: false });                                                                 // deck working lights
-  k.box('glow', hx + hl / 2 + 0.2, deck + 9.2, -3, 0.2, 0.3, 0.9, [22, 20, 16]); k.box('glow', hx + hl / 2 + 0.2, deck + 9.2, 3, 0.2, 0.3, 0.9, [22, 20, 16]);
+  if (!o.dead) {                                                                                                                                                // deck working lights (a dead ship shows none)
+    k.light(hx + hl / 2 + 3, deck + 6, 0, 0xffe2b8, 500, 46, { glow: 0.6, range: 10, bulb: false });
+    k.box('glow', hx + hl / 2 + 0.2, deck + 9.2, -3, 0.2, 0.3, 0.9, [22, 20, 16]); k.box('glow', hx + hl / 2 + 0.2, deck + 9.2, 3, 0.2, 0.3, 0.9, [22, 20, 16]);
+  }
   // foredeck: windlasses, mast, anchors
   k.box('paint', L2 - 12, deck + 0.6, 0, 3, 1.2, 5, '#3a3f44'); for (const sz of [-1.6, 1.6]) k.cyl('dark', [L2 - 9, deck + 0.7, sz - 0.8], [L2 - 9, deck + 0.7, sz + 0.8], 0.55, 0.55, '#22262a', 10);
-  k.cyl('paint', [L2 - 5, deck, 0], [L2 - 5, deck + 8.5, 0], 0.2, 0.1, house, 8); k.lamp(L2 - 5, deck + 8.7, 0, [10, 10, 9], 0.13);
+  k.cyl('paint', [L2 - 5, deck, 0], [L2 - 5, deck + 8.5, 0], 0.2, 0.1, house, 8); if (!o.dead) k.lamp(L2 - 5, deck + 8.7, 0, [10, 10, 9], 0.13);
   // deck cranes
   for (const cx of [-8, 20].slice(0, o.cranes ?? 2)) {
     k.cyl('paint', [cx, deck, hb - 1.6], [cx, deck + 9.5, hb - 1.6], 1.0, 0.85, '#c7a12c', 12);
@@ -465,6 +485,9 @@ B.shedTrim = (k, o) => {
   k.box('steel', (x0 + x1) / 2, h + 0.12, z + face * 0.2, x1 - x0 + 0.6, 0.14, 0.2, '#55585b');
   if (id) k.sign(id, (x0 + x1) / 2, h - 1.3, z + face * 0.115, { h: 1.25, color: '#e6e0d0', yaw: face > 0 ? 0 : Math.PI, worn: 0.8 });
 };
+
+addYardBuilders(B, { rng, PALETTE });
+addAirfieldBuilders(B, { rng, PALETTE });
 
 export async function buildDressing(items, root) {
   const k = new Kit();

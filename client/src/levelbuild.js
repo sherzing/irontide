@@ -20,6 +20,7 @@ export function loadModel(id, lod = false) {
       g.scene.traverse((o) => {
         if (!o.isMesh) return;
         o.castShadow = true; o.receiveShadow = true;
+        if (Object.keys(o.geometry.morphAttributes).length) { o.geometry.morphAttributes = {}; o.morphTargetInfluences = undefined; }   // props are static: shape keys would only break instancing
         for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap']) if (o.material[k]) o.material[k].anisotropy = 8;
         // glTF transmission would make three.js render the whole scene a second time, every frame, for one lamp lens
         if (o.material.transmission > 0) { o.material.transmission = 0; o.material.thickness = 0; o.material.roughness = Math.min(o.material.roughness, 0.15); o.material.needsUpdate = true; }
@@ -113,21 +114,25 @@ export async function buildLevel(level, engine, onProgress = () => {}) {
   await Promise.all(propModels.map(async (id) => { models[id] = await loadModel(id, true); step(); }));
   const M = new THREE.Matrix4(), A = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
   const byModel = new Map();
+  // large levels: instances are split into tiles so that the camera can cull what it does not see
+  const lb = level.bounds, TILE = Math.max(lb.maxX - lb.minX, lb.maxZ - lb.minZ) > 110 ? 60 : 0;
   for (const p of level.props) {
-    const def = PROP_DEFS[p.model], s = p.scale || 1;
+    const def = PROP_DEFS[p.model], s = (p.scale || 1) * (def.scale || 1);
     M.makeRotationY(p.yaw || 0).setPosition(p.x, p.y, p.z);
     A.compose(new THREE.Vector3(0, -(p.lay ? def.min[2] : def.min[1]) * s, 0), q.setFromEuler(e.set(p.lay ? -Math.PI / 2 : 0, 0, 0)), new THREE.Vector3(s, s, s));
     const m = M.clone().multiply(A);
-    if (!byModel.has(p.model)) byModel.set(p.model, []);
-    byModel.get(p.model).push(m);
+    const key = p.model + (TILE ? `|${Math.floor(p.x / TILE)},${Math.floor(p.z / TILE)}` : '');
+    if (!byModel.has(key)) byModel.set(key, { id: p.model, list: [] });
+    byModel.get(key).list.push(m);
     if (p.tag) { const o = new THREE.Object3D(); o.position.set(p.x, p.y, p.z); o.rotation.y = p.yaw || 0; root.add(o); out.tagged[p.tag] = o; }
   }
-  for (const [id, list] of byModel) {
+  for (const { id, list } of byModel.values()) {
     models[id].scene.traverse((o) => {
       if (!o.isMesh) return;
       const im = new THREE.InstancedMesh(o.geometry, o.material, list.length);
       list.forEach((m, i) => im.setMatrixAt(i, A.multiplyMatrices(m, o.matrixWorld)));
-      im.castShadow = true; im.receiveShadow = true; im.frustumCulled = false; im.name = 'prop:' + id;
+      im.castShadow = true; im.receiveShadow = true; im.name = 'prop:' + id;
+      if (TILE) im.computeBoundingSphere(); else im.frustumCulled = false;
       root.add(im);
     });
   }
@@ -186,12 +191,19 @@ export async function buildLevel(level, engine, onProgress = () => {}) {
     const m = new THREE.MeshStandardMaterial({ map, transparent: true, roughness: kind === 'stain' ? 0.25 : 0.7, metalness: 0, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
     return (decalMats[key] = patchSurface(m, { macro: false, planar: true, dark: 0.8, wetRough: 0.45 }));
   };
+  const decalGeos = new Map();                                    // one mesh per paint, however many marks a level has
   for (const d of level.decals) {
     const g = new THREE.PlaneGeometry(d.w, d.d);
     if (d.kind !== 'stain') { const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * d.w / 2, uv.getY(i) * d.d / 2); }
-    const m = new THREE.Mesh(g, decalMat(d.kind, d.color || '#000'));
-    m.rotation.set(-Math.PI / 2, 0, d.yaw || 0); m.position.set(d.x, (d.y || 0) + 0.006 + (d.kind === 'stain' ? 0.002 : 0), d.z);
-    m.receiveShadow = true; m.renderOrder = 1; root.add(m);
+    g.applyMatrix4(M.makeRotationFromEuler(e.set(-Math.PI / 2, 0, d.yaw || 0)).setPosition(d.x, (d.y || 0) + 0.006 + (d.kind === 'stain' ? 0.002 : 0), d.z));
+    const mat = decalMat(d.kind, d.color || '#000');
+    if (!decalGeos.has(mat)) decalGeos.set(mat, []);
+    decalGeos.get(mat).push(g);
+  }
+  for (const [mat, geos] of decalGeos) {
+    const m = new THREE.Mesh(mergeGeometries(geos, false), mat);
+    m.receiveShadow = true; m.renderOrder = 1; m.name = 'decals'; root.add(m);
+    geos.forEach((g) => g.dispose());
   }
 
   // ---- water

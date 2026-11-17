@@ -56,6 +56,17 @@ export const MATS = {
   grid: { id: 'rusty_metal_grid', tile: 1.0, dark: 0.85 },
   wood: { id: 'wood_planks_grey', tile: 2.2, planar: true, dark: 0.55 },
   container: { id: 'container_side', tile: 2.59, gray: true, dark: 0.85 },
+  // soft = natural or rolled ground: no slab joints
+  sand: { id: 'coast_sand_01', tile: 4.2, ground: true, soft: true, dark: 0.62 },
+  wetsand: { id: 'damp_beach_sand', tile: 5.5, ground: true, soft: true, dark: 0.62, rough: 0.55 },
+  grass: { id: 'sparse_grass', tile: 3.6, ground: true, soft: true, dark: 0.7 },
+  runway: { id: 'aerial_asphalt_01', tile: 16, ground: true, soft: true, planar: true, dark: 0.5 },
+  hangarfloor: { id: 'hangar_concrete_floor', tile: 4, ground: true, planar: true, dark: 0.6, env: 0.5 },
+  apron: { id: 'concrete_floor_worn_001', tile: 5.5, ground: true, planar: true, dark: 0.6, rough: 1.25 },   // cast concrete in 7 m bays
+  plaster: { id: 'concrete_wall_008', tile: 3.0, dark: 0.7 },                                  // rendered outside wall, tinted per box
+  hull: { id: 'rusty_metal_sheet', tile: 3.4, dark: 0.85 },                            // ship plating: grey paint going to rust
+  antifoul: { id: 'rusty_painted_metal', tile: 3.2, dark: 0.85 },                      // red bottom paint with rust runs
+  cladding: { id: 'box_profile_metal_sheet', tile: 2.4, gray: true, env: 0.7, dark: 0.85 },   // profiled steel sheet, tinted per box
 };
 
 export const NOISE = /* glsl */`
@@ -111,7 +122,7 @@ export const PLANAR_FRAG = /* glsl */`
  * opts: macro (tiling break-up + grime), ground (slab joints, puddles, ripples), planar, dark (soaked albedo), wetRough
  */
 export function patchSurface(mat, opts = {}) {
-  const o = { macro: true, ground: false, planar: false, dark: 0.8, wetRough: 0.45, ...opts };
+  const o = { macro: true, ground: false, soft: false, planar: false, dark: 0.8, wetRough: 0.45, ...opts };
   const prev = mat.onBeforeCompile;
   mat.onBeforeCompile = (sh, r) => {
     prev?.(sh, r);
@@ -128,9 +139,9 @@ export function patchSurface(mat, opts = {}) {
         ${o.macro ? `float macro = fbm(vWPos.xz * 0.11 + vWPos.y * 0.13);
         diffuseColor.rgb *= mix(0.76, 1.12, macro);` : 'float macro = 0.5;'}
         ${o.ground ? `
-        vec2 sj = abs(fract(vWPos.xz / 7.0 + 0.5) - 0.5) * 7.0; float jd = min(sj.x, sj.y);
+        ${o.soft ? 'float jd = 1.0;' : `vec2 sj = abs(fract(vWPos.xz / 7.0 + 0.5) - 0.5) * 7.0; float jd = min(sj.x, sj.y);
         float joint = 1.0 - smoothstep(0.012, 0.035, jd);
-        diffuseColor.rgb *= (0.9 + 0.2 * h21(floor(vWPos.xz / 7.0 + 0.5))) * mix(1.0, 0.4, joint);
+        diffuseColor.rgb *= (0.9 + 0.2 * h21(floor(vWPos.xz / 7.0 + 0.5))) * mix(1.0, 0.4, joint);`}
         float patchN = fbm(vWPos.xz * 0.045 + 31.7); diffuseColor.rgb *= mix(1.0, 0.72, smoothstep(0.56, 0.6, patchN) * 0.7);
         float pm = fbm(vWPos.xz * 0.21 + 4.7) * 0.72 + vnoise(vWPos.xz * 1.9) * 0.2 + (1.0 - smoothstep(0.0, 0.5, jd)) * 0.07;
         float pth = mix(0.74, 0.535, uWet);
@@ -172,7 +183,7 @@ export async function getMaterial(key) {
     });
     m.userData.tile = def.tile;
     if (def.metal != null) m.metalness = def.metal;
-    patchSurface(m, { ground: !!def.ground, planar: !!def.planar, dark: def.dark ?? 1, rough: def.rough });
+    patchSurface(m, { ground: !!def.ground, soft: !!def.soft, planar: !!def.planar, dark: def.dark ?? 1, rough: def.rough });
     return m;
   })();
   matCache.set(key, p);

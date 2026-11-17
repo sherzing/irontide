@@ -128,7 +128,7 @@ export class Hud {
     else { const n = rows.length > 40 ? 3 : rows.length > 16 ? 2 : 1, per = Math.ceil(rows.length / n); cols = Array.from({ length: n }, (_, c) => ({ cls: '', head: 'Player', rows: rows.slice(c * per, (c + 1) * per), from: c * per })); }
     const table = (c) => `<table class="${c.cls}"><tr><th class="r">#</th><th>${c.head}</th><th class="n">Kills</th><th class="n">Deaths</th></tr>${c.rows.map((r, i) =>
       `<tr class="${r.me ? 'me' : ''}"><td class="r">${c.from + i + 1}</td><td>${esc(r.name)}${r.bot ? '<span class="bot">BOT</span>' : ''}</td><td class="n">${r.k}</td><td class="n">${r.d}</td></tr>`).join('')}</table>`;
-    const html = `<h3>${esc(data.title)}</h3><div class="sub lbl">${rows.length} in the yard${data.teams ? ' · blue vs red' : ''}</div><div class="cols">${cols.map(table).join('')}</div>`;
+    const html = `<h3>${esc(data.title)}</h3><div class="sub lbl">${rows.length} players${data.teams ? ' · blue vs red' : ''}</div><div class="cols">${cols.map(table).join('')}</div>`;
     if (this.set('sbHtml', html)) { el.innerHTML = html; el.dataset.cols = cols.length; el.style.setProperty('--n', Math.max(8, ...cols.map((c) => c.rows.length))); }
   }
 

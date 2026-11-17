@@ -11,6 +11,8 @@ export const TEXTURES = [
   'concrete_floor_worn_001', 'asphalt_02', 'concrete_wall_008', 'container_side',
   'corrugated_iron_02', 'rusty_metal_02', 'metal_plate', 'wood_planks_grey',
   'red_brick_03', 'concrete_pavement_02', 'painted_concrete', 'rusty_metal_grid', 'gravel_concrete_03',
+  'coast_sand_01', 'damp_beach_sand', 'rusty_metal_sheet', 'rusty_painted_metal',                       // Breakers
+  'aerial_asphalt_01', 'hangar_concrete_floor', 'sparse_grass', 'box_profile_metal_sheet',               // Crosswind
 ];
 export const MODELS = [
   'Barrel_01', 'barrel_03', 'wooden_crate_02', 'old_military_crate', 'wooden_military_crate',
@@ -19,9 +21,11 @@ export const MODELS = [
   'modular_chainlink_fence', 'cement_bag', 'plastic_crate_01', 'security_light',
   'exterior_aircon_unit', 'power_box_01', 'trashbag', 'cardboard_box_01', 'metal_tool_chest',
   'industrial_storage_cart', 'vintage_radio_transceiver', 'utility_box_01',
+  'portable_welding_cart', 'small_lpg_tank', 'Barrel_02', 'rusted_wheel_rim_01', 'lateral_sea_marker',  // Breakers
+  'covered_car', 'tool_cart', 'steel_frame_shelves_01', 'utility_box_02', 'metal_jerrycan_green', 'concrete_road_barrier_02',   // Crosswind
 ];
 const WEAPON_MODELS = ['service_pistol', 'bolt_action_rifle_7_62'];
-export const HDRIS = ['industrial_sunset_02_puresky', 'belfast_sunset_puresky', 'kloofendal_48d_partly_cloudy_puresky'];
+export const HDRIS = ['industrial_sunset_02_puresky', 'belfast_sunset_puresky', 'kloofendal_48d_partly_cloudy_puresky', 'syferfontein_18d_clear_puresky'];
 
 const exists = (p) => stat(p).then((s) => s.size > 0, () => false);
 async function dl(url, dest) {

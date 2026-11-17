@@ -240,6 +240,7 @@ export default {
   id: 'drydock',
   name: 'Drydock',
   blurb: 'Harbour freight yard · rain at golden hour · close to mid range',
+  pitch: 'Live rounds in the Drydock yard. Set the opposition and fight for the quay.',
   players: { min: 8, max: 24 },      // the match size this yard suits; the menu shows it (the game's own cap is MAX_PLAYERS)
   env: {
     hdri: 'belfast_sunset_puresky',
