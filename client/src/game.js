@@ -54,6 +54,7 @@ export class Game {
       if (e.repeat) return;
       this.keys.add(e.code);
       if (e.code === 'KeyR') this.startReload();
+      if (e.code === 'ShiftLeft') this.dropAim();
       if (e.code === 'Digit1') this.switchWeapon('carbine');
       if (e.code === 'Digit2') this.switchWeapon('marksman');
       if (e.code === 'Digit3') this.switchWeapon('pistol');
@@ -66,16 +67,16 @@ export class Game {
       if (!this.active || this.paused) return;
       if (document.pointerLockElement !== canvas) { canvas.requestPointerLock?.()?.catch?.(() => {}); return; }
       if (e.button === 0) { this.mouse.l = true; this.firePressed = true; }
-      if (e.button === 2) this.mouse.r = true;
+      if (e.button === 2) this.mouse.r = this.settings.aim === 'hold' ? true : !this.mouse.r;      // click to aim and click again to stop, or hold (Settings)
     });
-    addEventListener('mouseup', (e) => { if (e.button === 0) this.mouse.l = false; if (e.button === 2) this.mouse.r = false; });
+    addEventListener('mouseup', (e) => { if (e.button === 0) this.mouse.l = false; if (e.button === 2 && this.settings.aim === 'hold') this.mouse.r = false; });
     addEventListener('contextmenu', (e) => e.preventDefault());
     addEventListener('mousemove', (e) => {
       if (!this.active || this.paused || document.pointerLockElement !== canvas || !this.me) return;
       const zoom = this.engine.camera.fov / this.settings.fov;
-      const s = this.settings.sens * 0.00011 * zoom;
-      this.me.yaw -= e.movementX * s; this.me.pitch = clamp(this.me.pitch - e.movementY * s, -1.5, 1.5);
-      this.look.x += e.movementX; this.look.y += e.movementY;
+      const s = this.settings.sens * 0.00011 * zoom, dy = this.settings.invertY === 'on' ? -e.movementY : e.movementY;
+      this.me.yaw -= e.movementX * s; this.me.pitch = clamp(this.me.pitch - dy * s, -1.5, 1.5);
+      this.look.x += e.movementX; this.look.y += dy;
     });
     addEventListener('wheel', (e) => {
       if (!this.active || this.paused || !this.me) return;
@@ -126,7 +127,7 @@ export class Game {
         if (this.match) this.match.ts = m.ts;
         const mine = me && (m.id === me.id || m.by === me.id);
         this.hud.killfeed(k?.name || '?', v?.name || '?', m.w, m.hs, mine, m.by === m.id);
-        if (me && m.id === me.id) { me.alive = false; me.deadT = 0; me.killer = m.by === m.id ? '' : k?.name || ''; me.reload = null; this.audio.ui('death'); this.mouse.l = false; }
+        if (me && m.id === me.id) { me.alive = false; me.deadT = 0; me.killer = m.by === m.id ? '' : k?.name || ''; me.reload = null; this.audio.ui('death'); this.mouse.l = this.mouse.r = false; }
         break;
       }
       case 'match': {
@@ -180,15 +181,18 @@ export class Game {
   }
 
   // ------------------------------------------------------------------ weapons
+  /** With click-to-aim the sights stay up until something ends it: a second click, a reload, a weapon change, a sprint, dying. */
+  dropAim() { if (this.settings.aim !== 'hold') this.mouse.r = false; }
   switchWeapon(name) {
     const me = this.me; if (!me || !me.alive || me.weapon === name) return;
+    this.dropAim();
     me.weapon = name; me.reload = null; me.bolt = -1; me.bloom = 0; this.vm.setWeapon(name); this.audio.click('draw');
   }
   startReload() {
     const me = this.me; if (!me || !me.alive || me.reload) return;
     const w = WEAPONS[me.weapon], a = me.ammo[me.weapon];
     if (a.mag >= w.mag || a.res <= 0) return;
-    me.reload = { t: 0, dur: w.reload, cues: this.vm.reloadCues() }; me.bolt = -1;
+    me.reload = { t: 0, dur: w.reload, cues: this.vm.reloadCues() }; me.bolt = -1; this.dropAim();
   }
   tryFire(now) {
     const me = this.me, w = WEAPONS[me.weapon], a = me.ammo[me.weapon];

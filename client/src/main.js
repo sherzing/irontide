@@ -19,7 +19,7 @@ const $ = (s) => document.querySelector(s);
 const params = new URLSearchParams(location.search);
 
 // ---------------------------------------------------------------- settings
-const defaults = { mode: 'quick', quality: 'high', dynres: 'on', sens: 14, fov: 78, volume: 80, name: 'Player' + ((Math.random() * 900 + 100) | 0),
+const defaults = { mode: 'quick', quality: 'high', dynres: 'on', sens: 14, invertY: 'off', aim: 'toggle', fov: 78, volume: 80, name: 'Player' + ((Math.random() * 900 + 100) | 0),
   q: { mode: 'dm', level: DEFAULT_LEVEL, bots: 9, skill: 'normal' }, c: { skill: 'normal' }, m: { server: '', room: 'public', mode: 'tdm', level: DEFAULT_LEVEL, fill: 12 } };
 let settings = structuredClone(defaults);
 try { const s = JSON.parse(localStorage.getItem('irontide') || '{}'); settings = { ...defaults, ...s, q: { ...defaults.q, ...s.q }, c: { ...defaults.c, ...s.c }, m: { ...defaults.m, ...s.m } }; } catch { /* storage unavailable */ }
