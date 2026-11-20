@@ -9,6 +9,7 @@
     "build": "vite build",
     "start": "node server/index.js",
     "play": "vite build && node server/index.js",
+    "package": "vite build && node scripts/package.mjs",
     "optimize": "node scripts/optimize-models.mjs"
   },
   "dependencies": {

@@ -3,3 +3,4 @@ dist
 public/assets
 *.log
 .work
+release

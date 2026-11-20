@@ -39,6 +39,7 @@ Server options: `node server/index.js --port 8787 --mode tdm|dm|campaign --fill 
 Other machines join by opening `http://<your-ip>:8787` (or entering `<your-ip>:8787` under Multiplayer → Server).
 `GET /status` lists the live rooms. The first player into a room decides its mode, level and bot fill.
 
+Installing a packaged release on another machine, with no build there: [INSTALL.md](INSTALL.md). `npm run package` makes the release.
 Hosting it for other people, with hardware requirements: [docs/server-setup.md](docs/server-setup.md).
 Every setting and where it lives: [docs/configuration.md](docs/configuration.md). Guide for coding agents: [AGENTS.md](AGENTS.md).
 
@@ -50,6 +51,7 @@ Every setting and where it lives: [docs/configuration.md](docs/configuration.md)
 | `shared/levels/` | Levels as plain data (`drydock.js`, `breakers.js`, `crosswind.js`), authoring helpers (`kit.js`), registry (`index.js`) |
 | `client/src/` | Renderer + post chain (`engine.js`), level builder (`levelbuild.js`), instanced containers (`containers.js`), scenery builders (`dressing.js`, `dressing-yard.js`, `dressing-airfield.js`), surface shaders (`materials.js`), rain (`rain.js`), FX, first-person weapons (`viewmodel.js`, `vmkit.js`, `vmparts.js` and one file per gun: `vmcarbine.js`, `vmsmg.js`, `vmshotgun.js`, `vmsniper.js`, `vmpistol.js`), characters, HUD (`hud.js`, `ui.css`), session (`game.js`), transports (`net.js`) |
 | `server/index.js` | Static file server + WebSocket rooms, one `GameSim` per room |
+| `install.sh`, `scripts/package.mjs` | The installer for a packaged release, and the script that packs one into `release/` |
 | `scripts/` | Asset fetcher, headless sim test (`sim-test.mjs`), server protocol test (`net-test.mjs`), Playwright screenshot/playtest tools |
 
 Solo modes run the very same `GameSim` in-process (`LocalTransport`), so quick match, campaign and multiplayer share one code path.
@@ -122,11 +124,4 @@ The browser scripts use the machine's GPU through ANGLE/EGL (`scripts/browser.mj
 
 ## Credits
 
-Textures, models and HDRIs: [Poly Haven](https://polyhaven.com) (CC0). Soldier model and water normal map: three.js examples.
-First-person hand rig: the "generic hand" from [WebXR Input Profiles](https://github.com/immersive-web/webxr-input-profiles) (MIT),
-dressed in-engine as gloves.
-Fonts (SIL Open Font License 1.1, bundled in `client/fonts/` next to their licence texts): Saira Stencil One, Saira Condensed
-and Saira Extra Condensed by Omnibus-Type; JetBrains Mono by JetBrains. All shipping-line and air-freight names, liveries,
-vessel names and registrations in the levels are fictional.
-
-The game's own code is MIT-licensed, see `LICENSE`.
+Assets, fonts and the hand rig come from other projects: [CREDITS.md](CREDITS.md). The game's own code is MIT-licensed, see `LICENSE`.

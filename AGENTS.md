@@ -23,6 +23,7 @@ A change is finished when every check its files touch is **green**.
 | --- | --- | --- |
 | `shared/` | `node scripts/sim-test.mjs` | Exit code 0 |
 | `server/`, or a message between client and server | Restart the server, then `node scripts/net-test.mjs ws://localhost:<port>` | It reports the cap connected and one more player rejected, at 20 snapshots a second |
+| `install.sh`, `scripts/package.mjs` | `npm run package`, then `sh release/install.sh --from release/irontide.tar.gz --dir <new folder> --port <free port> --service none` | The first prints `started and joined OK`; the second exits 0 and prints `is installed in <new folder>` |
 | `client/` | `npm run build`, then `node scripts/play-test.mjs <out prefix> "http://localhost:<port>/?auto=dm&bots=9&level=<id>"` for each level the change can reach | It prints `errors: 0`, and you have opened every screenshot it saved |
 
 ## Gotchas
@@ -48,11 +49,14 @@ A change is finished when every check its files touch is **green**.
 - **`dress(type, {...})`** overwrites `type` with an option of that name; scenery options use `kind`.
 - **Looking at a level.** `client/dev.html?level=<id>&p=x,y,z&yaw=&pitch=` is a free camera;
   `node scripts/level-map.mjs out.png <id>` draws the plan.
-- **Props** load from `<id>.lod.gltf`, which `npm run optimize` writes. Run it after adding a model.
 - **Weapons** are modelled in code on one skeleton (`client/src/vmparts.js`). Keep a gun's pistol grip, trigger and
   fore-end where the skeleton puts them and the hand poses in `client/src/viewmodel.js` fit it. Judge them on the
   bench: `npx vite --port 5177`, then `node scripts/vm-lab.mjs out.jpg views <weapon>` (also `strip <weapon> reload`).
   A single-shot weapon fires once per trigger press, so a scripted match must release `fire` between shots.
+- **Props** load from `<id>.lod.gltf`, which `npm run optimize` writes. Run it after adding a model.
+- **Installer.** `install.sh` is POSIX `sh` (it runs under dash and BusyBox) and holds no list of valid settings:
+  it asks the release's own server with `--check`. An installed copy runs the `install.sh` packed inside it, so
+  repack before testing a change through `<folder>/app/install.sh`.
 - **Names** of shipping lines, vessels and weapons are fictional. Invent new ones the same way.
 
 ## Reference
@@ -60,5 +64,7 @@ A change is finished when every check its files touch is **green**.
 - **Configuration** — changing a default, limit or tuning value (server flags, room and address-bar parameters,
   player settings, quality presets, weapons, bots, match rules): [docs/configuration.md](docs/configuration.md) says
   where each one lives.
-- **Deployment** — hosting it for other people, hardware sizing, systemd, HTTPS:
+- **Installing** — putting a release on a machine, updating or removing one, building and publishing a release:
+  [INSTALL.md](INSTALL.md).
+- **Hosting** — hardware sizing for a player count, letting players in, HTTPS, limits:
   [docs/server-setup.md](docs/server-setup.md).

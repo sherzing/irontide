@@ -18,7 +18,18 @@ Set when the server starts. A command-line flag wins over the environment variab
 node server/index.js --port 9000 --mode dm --fill 24 --skill hard
 ```
 
-`GET /status` returns the open rooms as JSON: name, mode, human players, cap, level and the level's recommended size.
+`GET /status` returns the open rooms as JSON, one object each: `room` (its name), `mode`, `players` (the humans in
+it), `max` (the cap), `level` and `recommended` (the level's suggested size).
+`GET /version` returns the build: version, commit and build time for a packaged release, `{"version":"dev"}` in a
+source checkout.
+
+An unusable value stops the server at start with exit code 78 and a line naming the value and the accepted ones.
+`node server/index.js --check`, with the same flags or environment, prints the settings it would use and exits
+without starting.
+
+An installation made with `install.sh` keeps the ones that were set as `PORT=`, `MODE=`, `FILL=`, `SKILL=` and
+`LEVEL=` lines in `irontide.env` in its folder; a key that is absent takes the default above. See
+[INSTALL.md](../INSTALL.md#day-to-day).
 
 ## 2. Room
 
