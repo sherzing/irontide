@@ -4,6 +4,7 @@
 //   fenders · razorWire · rope · rails — plus the shipbreaking-yard set (dressing-yard.js) and the airfield set (dressing-airfield.js)
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { getMaterial, canvasTex, patchSurface } from './materials.js';
 import { CONTAINER } from '../../shared/props.js';
 import { addYardBuilders } from './dressing-yard.js';
@@ -56,6 +57,25 @@ export class Kit {
     const g = new THREE.CylinderGeometry(r1, r0, len, seg, 1), uv = g.attributes.uv;
     for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * Math.max(1, Math.round((r0 * 6.3) / 2.2)), (uv.getY(i) * len) / 2.2);
     this.put(mat, g, color, new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(UP, d)).setPosition(A.add(B).multiplyScalar(0.5)));
+  }
+  /** Box with rounded edges: pressed panels and mouldings catch the light along them. */
+  rbox(mat, x, y, z, sx, sy, sz, r, color, rx = 0, ry = 0, rz = 0) {
+    const g = new RoundedBoxGeometry(sx, sy, sz, 2, Math.min(r, sx / 2.02, sy / 2.02, sz / 2.02));
+    this.put(mat, g, color, new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rx, ry, rz, 'YXZ')).setPosition(x, y, z));
+  }
+  /**
+   * Surface of revolution about the local x axis: pts = [[x, radius], ...] with x increasing.
+   * phi0 / phiLen cut a band out of it (0 = the +z side, PI/2 = underneath, PI = the -z side, 3PI/2 = on top);
+   * bend(x) lifts the axis (an upswept tail); squash = [sy, sz] makes the section oval; rot = [rx, ry, rz] turns it and
+   * at = [x, y, z] moves it (rot [0, PI/2, 0] lays the axis across the vehicle: a wheel).
+   */
+  lathe(mat, pts, color, o = {}) {
+    const { seg = 24, phi0 = 0, phiLen = Math.PI * 2, bend = null, at = [0, 0, 0], squash = null, rot = null } = o;
+    const g = new THREE.LatheGeometry(pts.map(([x, r]) => new THREE.Vector2(Math.max(r, 1e-4), x)), seg, phi0, phiLen); g.rotateZ(-Math.PI / 2);
+    if (squash) g.scale(1, squash[0], squash[1]);
+    if (bend) { const P = g.attributes.position; for (let i = 0; i < P.count; i++) P.setY(i, P.getY(i) + bend(P.getX(i))); }
+    if (bend || squash) g.computeVertexNormals();
+    this.put(mat, g, color, (rot ? new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rot[0], rot[1], rot[2], 'YXZ')) : new THREE.Matrix4()).setPosition(at[0], at[1], at[2]));
   }
   /** Ball or, with the scale factors, an ellipsoid. */
   sphere(mat, x, y, z, r, color, sx = 1, sy = 1, sz = 1, seg = 12) {

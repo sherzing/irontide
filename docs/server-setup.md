@@ -35,9 +35,9 @@ the three. None of this has been measured over the internet, or on a small rente
 - Keyboard and mouse. There are no touch or gamepad controls, so phones and tablets do not work.
 - Any graphics chip of the last several years. Measured on Intel UHD integrated graphics at 1600×900, in frames per
   second on Low / Medium / High: Drydock with 10 players 60 / 45 / 25, Breakers with 32 players 60 / 58 / 44, Crosswind
-  with 64 players 60 / 47 / 40. Dynamic resolution, on by default, lowers the render resolution to hold the frame rate.
-- The first visit downloads 137 MB for Drydock; Breakers adds 59 MB and Crosswind 64 MB when a player first loads
-  them (260 MB for all three). The browser keeps the files for a day.
+  with 64 players 58 / 51 / 38. Dynamic resolution, on by default, lowers the render resolution to hold the frame rate.
+- The first visit downloads 106 MB for Drydock; Breakers adds 59 MB and Crosswind 64 MB when a player first loads
+  them (229 MB for all three). The browser keeps the files for a day.
 
 ## Install
 

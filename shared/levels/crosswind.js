@@ -81,7 +81,7 @@ function lightPlane(x, z, yawDeg, o = {}) {
   for (const s of [-1, 1]) F.box(-0.25, s * 1.2 - 0.2, 0.25, s * 1.2 + 0.2, 0, 0.9, 'steel', HID);
   dress('aircraft', { x, z, yaw: yawDeg, kind: 'light', ...o });
 }
-const VEH = { truck: [7.8, 2.5, 3.0], bowser: [7.8, 2.5, 3.0], tender: [7.8, 2.5, 3.2], pickup: [5.0, 1.9, 1.8], tug: [3.0, 1.5, 1.5], cart: [3.1, 1.5, 1.7], stairs: [4.8, 2.0, 3.6] };
+const VEH = { truck: [7.8, 2.5, 3.0], bowser: [7.8, 2.5, 3.0], tender: [8.2, 2.56, 3.2], pickup: [5.1, 1.9, 1.95], tug: [3.1, 1.5, 2.15], cart: [3.1, 1.6, 1.8], stairs: [4.8, 2.0, 3.7] };
 const vehicle = (type, x, z, yawDeg, color, o = {}) => {
   const [len, wid, h] = VEH[type], a = (yawDeg * Math.PI) / 180, off = type === 'truck' || type === 'bowser' || type === 'tender' ? -0.1 : 0;
   rbox(x + off * Math.cos(a), z - off * Math.sin(a), len, wid, 0.02, h, yawDeg, 'steel', { ...HID, surf: 'metal' });
@@ -146,7 +146,7 @@ lightPlane(-66, -52, 28, { reg: 'TAC 131', livery: { stripe: '#3d6b45', tail: '#
 lightPlane(72, -26, 195, { reg: 'TAC 152', livery: { stripe: '#b4772a', tail: '#31485c' } });
 vehicle('stairs', -3.4, -36.4, 82, '#c9c6bb'); vehicle('bowser', 5.5, -52, 172, '#c9c6bb'); vehicle('tug', -24, -31, 10, '#c8b23a');
 vehicle('cart', -28.2, -30.4, 10, '#59666b'); vehicle('cart', -32, -29.7, 12, '#59666b'); vehicle('cart', -35.8, -28.9, 12, '#59666b');
-vehicle('truck', 28, -58, 96, '#5d6a4f'); vehicle('pickup', -44, -22, 190, '#6a5d4f'); vehicle('tug', 44, -18, -150, '#c8b23a'); vehicle('cart', 47.6, -16.4, -150, '#59666b');
+vehicle('truck', 28, -58, 96, '#5d6a4f'); vehicle('pickup', -44, -22, 190, '#d9a81c', { text: 'FOLLOW ME' }); vehicle('tug', 44, -18, -150, '#c8b23a'); vehicle('cart', 47.6, -16.4, -150, '#59666b');
 container(50, -50, 0, '#8a2f25'); container(50, -47.3, 2, '#2f5d7a'); container(50, -50, 0, '#c8b23a', { y: 2.59 }); container(58.5, -37, 90, '#3d6b45'); container(31, -24, 4, '#c9c2b2', { open: true });
 container(-86, -24, 86, '#31485c'); container(-90, -56, 4, '#b4772a'); container(-90, -56, 4, '#7a3b2a', { y: 2.59 }); container(92, -52, 90, '#2f5d7a'); container(22, -40, 60, '#7a3b2a');
 prop('covered_car', -88, -40.5, 0); prop('covered_car', -84.6, -40, 4); prop('covered_car', 86.5, -31, 92); prop('covered_car', -52, -16.4, 80); prop('covered_car', 66, -62, 20);
@@ -275,8 +275,8 @@ export default {
     sunAzimuth: 162, sunElevation: 19,
     sunColor: '#ffe2bd', sunIntensity: 6.0,
     exposure: 0.9, skyIntensity: 0.95, ambient: 1.15,
-    fog: { color: '#a9b9c9', sunColor: '#f2dcbc', density: 0.0019, falloff: 0.035 },      // thin cold air with a little ground mist
-    shafts: { density: 0.0022, strength: 0.55, distance: 150, anisotropy: 0.6, glow: 2 },
+    fog: { color: '#a9b9c9', sunColor: '#e6d6bc', density: 0.0015, falloff: 0.035 },      // thin cold air with a little ground mist
+    shafts: { density: 0.0018, strength: 0.22, distance: 150, anisotropy: 0.42, glow: 2 },   // kept low: the sun sits in the players' faces on the southern half
     weather: { rain: 0, wet: 0 },
     water: { y: -1.6, color: '#16303c' },
     bloom: { strength: 0.12, radius: 0.8, threshold: 1.3 },

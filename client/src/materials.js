@@ -60,9 +60,9 @@ export const MATS = {
   sand: { id: 'coast_sand_01', tile: 4.2, ground: true, soft: true, dark: 0.62 },
   wetsand: { id: 'damp_beach_sand', tile: 5.5, ground: true, soft: true, dark: 0.62, rough: 0.55 },
   grass: { id: 'sparse_grass', tile: 3.6, ground: true, soft: true, dark: 0.7 },
-  runway: { id: 'aerial_asphalt_01', tile: 16, ground: true, soft: true, planar: true, dark: 0.5 },
+  runway: { id: 'aerial_asphalt_01', tile: 16, ground: true, soft: true, planar: true, dark: 0.5, rough: 1.5 },
   hangarfloor: { id: 'hangar_concrete_floor', tile: 4, ground: true, planar: true, dark: 0.6, env: 0.5 },
-  apron: { id: 'concrete_floor_worn_001', tile: 5.5, ground: true, planar: true, dark: 0.6, rough: 1.25 },   // cast concrete in 7 m bays
+  apron: { id: 'concrete_floor_worn_001', tile: 5.5, ground: true, planar: true, dark: 0.6, rough: 1.7 },   // cast concrete in 7 m bays
   plaster: { id: 'concrete_wall_008', tile: 3.0, dark: 0.7 },                                  // rendered outside wall, tinted per box
   hull: { id: 'rusty_metal_sheet', tile: 3.4, dark: 0.85 },                            // ship plating: grey paint going to rust
   antifoul: { id: 'rusty_painted_metal', tile: 3.2, dark: 0.85 },                      // red bottom paint with rust runs
