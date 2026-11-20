@@ -231,7 +231,7 @@ h1.logo span { color: var(--acc); }
 #ammo.reloading .rl { visibility: visible; } #ammo.reloading .ticks i { opacity: 0.45; } #ammo.reloading .w { visibility: hidden; }
 #ammo.low .mag { color: var(--warn); } #ammo.low .ticks i:not(.off) { background: var(--warn); }
 #ammo.empty .mag { color: var(--danger); }
-#ammo .others { display: flex; gap: calc(var(--px) * 16); margin-top: calc(var(--px) * 9); font: 500 calc(var(--px) * 11.5) var(--f-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); }
+#ammo .others { display: flex; flex-wrap: wrap; justify-content: flex-end; max-width: calc(var(--px) * 420); gap: calc(var(--px) * 7) calc(var(--px) * 16); margin-top: calc(var(--px) * 9); font: 500 calc(var(--px) * 11.5) var(--f-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); }
 #ammo .others span { display: inline-flex; align-items: center; gap: calc(var(--px) * 7); }
 #ammo .others kbd { min-width: calc(var(--px) * 19); padding: calc(var(--px) * 1.5) calc(var(--px) * 4); font-size: calc(var(--px) * 10.5); }
 #ammo .others b { color: var(--ink); font-weight: 700; }

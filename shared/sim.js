@@ -87,7 +87,7 @@ export class GameSim {
     const e = this.newEnt(this.nextBotId++, name, true, o.team ?? this.pickTeam());
     e.ai = makeAI(o.skill || this.opts.skill, o.mode || 'roam', o.post || null);
     const r = Math.random();
-    e.weapon = o.weapon || (r < 0.68 ? 'carbine' : r < 0.85 ? 'marksman' : 'pistol');
+    e.weapon = o.weapon || (r < 0.42 ? 'carbine' : r < 0.64 ? 'smg' : r < 0.76 ? 'shotgun' : r < 0.9 ? 'marksman' : 'pistol');
     e.ai.ammo = WEAPONS[e.weapon].mag;
     e.temp = !!o.temp;
     this.out.broadcast({ t: 'join', e: this.info(e) });
@@ -169,11 +169,12 @@ export class GameSim {
     if (!e.alive || !w || this.phase !== 'play') return;
     if (this.time - e.lastFire < (60 / w.rpm) * 0.6) return;
     e.lastFire = this.time;
-    if (Array.isArray(m.o) && Array.isArray(m.e)) this.out.broadcast({ t: 'fire', id: e.id, w: m.w, o: m.o, e: m.e.slice(0, 1) }, e.id);
+    const pellets = w.pellets || 1;
+    if (Array.isArray(m.o) && Array.isArray(m.e)) this.out.broadcast({ t: 'fire', id: e.id, w: m.w, o: m.o, e: m.e.slice(0, pellets) }, e.id);
     const ey = e.y + (e.flags & 1 ? PLAYER.crouchEye : PLAYER.eye);
     let n = 0;
     for (const h of Array.isArray(m.hits) ? m.hits : []) {
-      if (++n > 1) break;
+      if (++n > pellets) break;
       const t = this.ents.get(h[0]);
       if (!t || !t.alive || !this.hostile(e, t)) continue;
       const d = Math.hypot(t.x - e.x, t.y - e.y, t.z - e.z);
@@ -186,17 +187,27 @@ export class GameSim {
     }
     for (const b of this.ents.values()) if (b.ai && b.alive && this.hostile(b, e) && Math.hypot(b.x - e.x, b.z - e.z) < 32) botAlert(b, e, this.time);
   }
-  botFire(e, o, d, dmgScale) {
-    const w = WEAPONS[e.weapon];
-    const wh = this.world.raycast(o[0], o[1], o[2], d[0], d[1], d[2], w.range, 'bullet');
-    let best = wh ? wh.t : w.range, victim = null, zone = null;
-    for (const t of this.ents.values()) {
-      if (!t.alive || !this.hostile(e, t)) continue;
-      const h = hitCharacter(o[0], o[1], o[2], d[0], d[1], d[2], best, t.x, t.y, t.z, t.flags & 1);
-      if (h) { best = h.t; victim = t; zone = h.zone; }
+  botFire(e, o, aim, dmgScale) {
+    const w = WEAPONS[e.weapon], n = w.pellets || 1, ends = [], hurt = [];
+    for (let p = 0; p < n; p++) {
+      let d = aim;
+      if (n > 1) {                                           // pellets scatter inside the weapon's cone, round the bot's aim
+        const r = Math.sqrt(Math.random()) * w.spread, th = Math.random() * 6.2832, k = Math.tan(r), ux = -aim[2], uz = aim[0], ul = Math.hypot(ux, uz) || 1;
+        d = [aim[0] + (ux / ul) * Math.cos(th) * k, aim[1] + Math.sin(th) * k, aim[2] + (uz / ul) * Math.cos(th) * k];
+        const l = Math.hypot(d[0], d[1], d[2]); d = [d[0] / l, d[1] / l, d[2] / l];
+      }
+      const wh = this.world.raycast(o[0], o[1], o[2], d[0], d[1], d[2], w.range, 'bullet');
+      let best = wh ? wh.t : w.range, victim = null, zone = null;
+      for (const t of this.ents.values()) {
+        if (!t.alive || !this.hostile(e, t)) continue;
+        const h = hitCharacter(o[0], o[1], o[2], d[0], d[1], d[2], best, t.x, t.y, t.z, t.flags & 1);
+        if (h) { best = h.t; victim = t; zone = h.zone; }
+      }
+      ends.push([r2(o[0] + d[0] * best), r2(o[1] + d[1] * best), r2(o[2] + d[2] * best)]);
+      if (victim) hurt.push([victim, Math.max(1, Math.round(damageAt(w, best, zone) * dmgScale)), zone]);
     }
-    this.out.broadcast({ t: 'fire', id: e.id, w: e.weapon, o: o.map(r2), e: [[r2(o[0] + d[0] * best), r2(o[1] + d[1] * best), r2(o[2] + d[2] * best)]] });
-    if (victim) this.damage(victim, e, Math.max(1, Math.round(damageAt(w, best, zone) * dmgScale)), zone, e.weapon);
+    this.out.broadcast({ t: 'fire', id: e.id, w: e.weapon, o: o.map(r2), e: ends });
+    for (const [victim, amt, zone] of hurt) this.damage(victim, e, amt, zone, e.weapon);
   }
   damage(t, by, amt, zone, weapon) {
     if (!t.alive || this.phase !== 'play') return;

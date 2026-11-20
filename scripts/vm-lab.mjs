@@ -24,7 +24,7 @@ if (mode === 'views') {
   await page.evaluate(([w, what]) => {
     const L = window.lab, s = L.state, cam = L.camera;
     L.vm.setWeapon(w); L.settle(1.5);
-    if (what === 'ads') { s.ads = true; cam.fov = { carbine: 52, pistol: 60, marksman: 40 }[w]; } else { s.ads = false; cam.fov = 78; }
+    if (what === 'ads') { s.ads = true; cam.fov = { carbine: 52, smg: 58, shotgun: 62, pistol: 60, marksman: 40 }[w]; } else { s.ads = false; cam.fov = 78; }
     L.settle(0.9); L.sheet([{ view: 'fp' }], 1);
   }, [a1, a2 || 'hip']);
   await shot();
@@ -38,7 +38,7 @@ if (mode === 'views') {
   await shot();
 } else if (mode === 'strip') {
   await page.evaluate(([w, clip, n, view]) => {
-    const L = window.lab, s = L.state, cam = L.camera, WE = { carbine: [2.1, 720], pistol: [1.5, 420], marksman: [2.9, 46] }[w];
+    const L = window.lab, s = L.state, cam = L.camera, WE = { carbine: [2.1, 720], smg: [2.0, 620], shotgun: [3.1, 190], pistol: [1.5, 420], marksman: [3.0, 46] }[w];
     L.vm.setWeapon(w); s.ads = false; cam.fov = 78; L.settle(1.5);
     const dur = clip === 'reload' ? WE[0] : 60 / WE[1] * 0.85, cells = []; let t = 0;
     for (let k = 0; k < n; k++) {
@@ -51,7 +51,7 @@ if (mode === 'views') {
   await shot();
 } else if (mode === 'frames') {       // frames <weapon> <clip> <t1,t2,...> [view] [cols]
   await page.evaluate(([w, clip, times, view, cols]) => {
-    const L = window.lab, s = L.state, cam = L.camera, WE = { carbine: [2.1, 720], pistol: [1.5, 420], marksman: [2.9, 46] }[w];
+    const L = window.lab, s = L.state, cam = L.camera, WE = { carbine: [2.1, 720], smg: [2.0, 620], shotgun: [3.1, 190], pistol: [1.5, 420], marksman: [3.0, 46] }[w];
     L.vm.setWeapon(w); s.ads = false; cam.fov = 78; L.settle(1.5);
     const dur = clip === 'reload' ? WE[0] : 60 / WE[1] * 0.85; let t = 0;
     L.sheet(times.map((target) => ({ view, focus: [0, -0.06, -0.06], dist: 1.0, pre: () => { while (t < target) { t = Math.min(target, t + (1 / 120) / dur); s[clip] = t; L.step(1 / 120); } } })), cols);
@@ -68,7 +68,7 @@ if (mode === 'views') {
   await shot();
 } else if (mode === 'orbit') {        // orbit <weapon> <focus [x,y,z]> <dist> <view,view,...>   (env CLIP, T to pose a clip first)
   await page.evaluate(([w, focus, dist, views, clip, T]) => {
-    const L = window.lab, s = L.state, cam = L.camera, WE = { carbine: [2.1, 720], pistol: [1.5, 420], marksman: [2.9, 46] }[w];
+    const L = window.lab, s = L.state, cam = L.camera, WE = { carbine: [2.1, 720], smg: [2.0, 620], shotgun: [3.1, 190], pistol: [1.5, 420], marksman: [3.0, 46] }[w];
     L.vm.setWeapon(w); s.ads = false; cam.fov = 78; L.settle(1.5);
     if (clip) { const dur = clip === 'reload' ? WE[0] : 60 / WE[1] * 0.85; let t = 0; while (t < T) { t = Math.min(T, t + (1 / 120) / dur); s[clip] = t; L.step(1 / 120); } }
     L.sheet(views.map((v) => (v === 'fp' ? { view: 'fp' } : { view: v, focus, dist })), views.length > 4 ? 3 : views.length > 1 ? 2 : 1);

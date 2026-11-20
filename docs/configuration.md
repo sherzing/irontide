@@ -72,7 +72,9 @@ restart the server.
 | Players per match (hard cap) | `MAX_PLAYERS` in `shared/sim.js` |
 | Simulation and snapshot rate | `TICK` in `shared/sim.js` |
 | Match time limit and score limit | `GameSim` constructor defaults in `shared/sim.js` (`timeLimit`, `scoreLimit`) |
-| Weapons: damage, fire rate, magazine, reload, recoil, spread | `WEAPONS` in `shared/weapons.js` |
+| Weapons: damage, fire rate, magazine, pellets, reload, recoil, spread | `WEAPONS` in `shared/weapons.js` |
+| Which weapons exist and their number keys | `WEAPON_ORDER` in `shared/weapons.js` |
+| How a weapon is held, aimed and reloaded on screen | `DEFS` in `client/src/viewmodel.js` |
 | Bot skill levels and bot names | `SKILLS` and `BOT_NAMES` in `shared/bots.js` |
 | Player size, eye height, step height | `PLAYER` in `shared/collision.js` |
 | Which levels exist | `LEVELS` in `shared/levels/index.js` |

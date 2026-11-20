@@ -24,7 +24,6 @@ export const MODELS = [
   'portable_welding_cart', 'small_lpg_tank', 'Barrel_02', 'rusted_wheel_rim_01', 'lateral_sea_marker',  // Breakers
   'covered_car', 'tool_cart', 'steel_frame_shelves_01', 'utility_box_02', 'metal_jerrycan_green', 'concrete_road_barrier_02',   // Crosswind
 ];
-const WEAPON_MODELS = ['service_pistol', 'bolt_action_rifle_7_62'];
 export const HDRIS = ['industrial_sunset_02_puresky', 'belfast_sunset_puresky', 'kloofendal_48d_partly_cloudy_puresky', 'syferfontein_18d_clear_puresky'];
 
 const exists = (p) => stat(p).then((s) => s.size > 0, () => false);
@@ -70,7 +69,6 @@ async function pool(items, fn, n = 6) {
 
 await pool(TEXTURES, (t) => texture(t));
 await pool(MODELS, (m) => model(m));
-await pool(WEAPON_MODELS, (m) => model(m, '2k'));
 await pool(HDRIS, hdri, 3);
 await dl('https://raw.githubusercontent.com/mrdoob/three.js/r170/examples/models/gltf/Soldier.glb', join(ROOT, 'models', 'Soldier.glb'));
 await dl('https://raw.githubusercontent.com/mrdoob/three.js/r170/examples/textures/waternormals.jpg', join(ROOT, 'tex', 'waternormals.jpg'));

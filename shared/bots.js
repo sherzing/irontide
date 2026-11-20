@@ -73,7 +73,7 @@ export function botThink(sim, e, dt, now) {
   if (tgt && ai.visible) {
     const dx = tgt.x - e.x, dz = tgt.z - e.z, d = Math.hypot(dx, dz) || 1;
     const nx = dx / d, nz = dz / d;
-    const pref = e.weapon === 'marksman' ? 30 : e.weapon === 'pistol' ? 8 : 15;
+    const pref = { marksman: 30, pistol: 8, shotgun: 6, smg: 10 }[e.weapon] || 15;
     if (now > ai.strafeUntil) { ai.strafe = Math.random() < 0.2 ? 0 : Math.random() < 0.5 ? -1 : 1; ai.strafeUntil = now + rnd(0.5, 1.6); }
     const fwd = d > pref * 1.4 ? 1 : d < pref * 0.45 ? -0.8 : 0;
     wx = nx * fwd + -nz * ai.strafe; wz = nz * fwd + nx * ai.strafe;

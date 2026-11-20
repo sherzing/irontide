@@ -55,9 +55,7 @@ export class Game {
       this.keys.add(e.code);
       if (e.code === 'KeyR') this.startReload();
       if (e.code === 'ShiftLeft') this.dropAim();
-      if (e.code === 'Digit1') this.switchWeapon('carbine');
-      if (e.code === 'Digit2') this.switchWeapon('marksman');
-      if (e.code === 'Digit3') this.switchWeapon('pistol');
+      { const n = /^Digit([1-9])$/.exec(e.code); if (n && WEAPON_ORDER[n[1] - 1]) this.switchWeapon(WEAPON_ORDER[n[1] - 1]); }      // 1-5: the weapons in WEAPON_ORDER
       if (e.code === 'Enter' && !this.net.local) this.beginChat();
       if (['Space', 'ControlLeft', 'KeyC'].includes(e.code)) e.preventDefault();
     });
@@ -80,7 +78,7 @@ export class Game {
     });
     addEventListener('wheel', (e) => {
       if (!this.active || this.paused || !this.me) return;
-      const i = WEAPON_ORDER.indexOf(this.me.weapon); this.switchWeapon(WEAPON_ORDER[(i + (e.deltaY > 0 ? 1 : 2)) % 3]);
+      const i = WEAPON_ORDER.indexOf(this.me.weapon); this.switchWeapon(WEAPON_ORDER[(i + (e.deltaY > 0 ? 1 : WEAPON_ORDER.length - 1)) % WEAPON_ORDER.length]);
     }, { passive: true });
   }
   beginChat() { this.chatting = true; const i = document.getElementById('chatin'); i.classList.remove('hidden'); i.value = ''; document.exitPointerLock(); setTimeout(() => i.focus(), 0); this.keys.clear(); }
@@ -166,10 +164,15 @@ export class Game {
   }
 
   remoteFire(m) {
-    const o = _a.set(m.o[0], m.o[1], m.o[2]), e = _b.set(...m.e[0]), dir = _c.copy(e).sub(o), len = dir.length() || 1; dir.divideScalar(len);
+    this.audio.shot(m.w, [m.o[0], m.o[1], m.o[2]]);
+    if (this.me && (this.me.team === 0 || this.roster.get(m.id)?.team !== this.me.team)) this.hud.gunfire(m.o[0], m.o[2]);
+    m.e.forEach((end, i) => this.remoteShot(m, end, i));      // one entry per pellet
+  }
+  remoteShot(m, end, i) {
+    const o = _a.set(m.o[0], m.o[1], m.o[2]), e = _b.set(...end), dir = _c.copy(e).sub(o), len = dir.length() || 1; dir.divideScalar(len);
     const muzzle = _d.copy(o).addScaledVector(dir, 0.75); muzzle.y -= 0.1;
-    this.fx.flash(muzzle, 0.55, 22); this.fx.tracer(muzzle, e); this.audio.shot(m.w, [o.x, o.y, o.z]);
-    if (this.me && (this.me.team === 0 || this.roster.get(m.id)?.team !== this.me.team)) this.hud.gunfire(o.x, o.z);
+    if (i === 0) this.fx.flash(muzzle, 0.55, 22);
+    if (i % 2 === 0) this.fx.tracer(muzzle, e);
     const h = this.world?.raycast(o.x, o.y, o.z, dir.x, dir.y, dir.z, len + 0.3, 'bullet');
     if (h && h.t > len - 0.6) { this.fx.impact(e, _n.set(h.nx, h.ny, h.nz), h.surf); if (Math.random() < 0.5) this.audio.impact(h.surf, [e.x, e.y, e.z]); }
     else if (this.me) {
@@ -205,6 +208,11 @@ export class Game {
     let spread = w.spread + (w.adsSpread - w.spread) * ads + w.moveSpread * Math.min(1, speed / 4.5) * (1 - ads * 0.6) + me.bloom * (1 - ads * 0.5);
     if (!me.grounded) spread += 0.05; if (me.crouch) spread *= 0.75;
     const o = cam.getWorldPosition(_a);
+    this.vm.fire(a.mag === 0);
+    this.engine.camera.updateMatrixWorld(); this.vm.update({ dt: 0, speed, grounded: me.grounded, ads: this.adsWanted, sprint: false, look: { x: 0, y: 0 }, reload: -1, bolt: -1, hidden: this.scoped });
+    this.vm.current.group.updateMatrixWorld(true);
+    const ends = [], hits = [], pellets = w.pellets || 1;
+    for (let p = 0; p < pellets; p++) {                     // a shotgun throws several pellets inside the same cone
     const r = Math.sqrt(Math.random()) * spread, th = Math.random() * Math.PI * 2;
     const dir = _b.set(Math.cos(th) * Math.tan(r), Math.sin(th) * Math.tan(r), -1).normalize().applyQuaternion(cam.quaternion);
     // world + characters
@@ -221,19 +229,18 @@ export class Game {
     const end = _c.copy(o).addScaledVector(dir, best);
     if (victim) { this.fx.impact(end, _n.copy(dir).negate(), 'flesh', false); this.audio.impact('flesh', [end.x, end.y, end.z]); }
     else if (surf === 'water') { this.fx.impact(end, _n.set(0, 1, 0), 'water', false); }
-    else if (wh) { this.fx.impact(end, _n.set(wh.nx, wh.ny, wh.nz), wh.surf); this.audio.impact(wh.surf, [end.x, end.y, end.z]); }
-    this.vm.fire(a.mag === 0);
-    this.engine.camera.updateMatrixWorld(); this.vm.update({ dt: 0, speed, grounded: me.grounded, ads: this.adsWanted, sprint: false, look: { x: 0, y: 0 }, reload: -1, bolt: -1, hidden: this.scoped });
-    this.vm.current.group.updateMatrixWorld(true);
+    else if (wh) { this.fx.impact(end, _n.set(wh.nx, wh.ny, wh.nz), wh.surf); if (p < 2) this.audio.impact(wh.surf, [end.x, end.y, end.z]); }
     const muzzle = this.scoped ? _d.copy(o).addScaledVector(dir, 1.2) : this.vm.muzzleWorld(_d);
-    this.fx.tracer(muzzle, end);
+    if (p % 2 === 0) this.fx.tracer(muzzle, end);
+    ends.push([end.x, end.y, end.z].map((v) => Math.round(v * 100) / 100)); if (victim) hits.push([victim.id, zone]);
+    }
     if (!w.bolt) { const ej = this.vm.ejectWorld(_n); this.fx.shell(ej, V().set(1.6 + Math.random(), 1.6 + Math.random(), 0.3 * Math.random()).applyQuaternion(cam.quaternion).add(me.vel), me.pos.y); }
     else me.bolt = 0;
     this.audio.shot(me.weapon);
     const ak = ads > 0.5 ? 0.72 : 1, ck = me.crouch ? 0.85 : 1;
     me.rp += w.recoil[0] * ak * ck * (0.85 + Math.random() * 0.3); me.ry += (Math.random() - 0.5) * 2 * w.recoil[1] * ak;
     me.bloom = Math.min(w.maxBloom, me.bloom + w.bloom); me.shake = Math.min(1, me.shake + 0.12);
-    this.net.send({ t: 'fire', w: me.weapon, o: [o.x, o.y, o.z].map((v) => Math.round(v * 100) / 100), e: [[end.x, end.y, end.z].map((v) => Math.round(v * 100) / 100)], hits: victim ? [[victim.id, zone]] : [] });
+    this.net.send({ t: 'fire', w: me.weapon, o: [o.x, o.y, o.z].map((v) => Math.round(v * 100) / 100), e: ends, hits });
     if (a.mag === 0 && a.res > 0) setTimeout(() => this.me === me && me.weapon && this.startReload(), 250);
   }
 

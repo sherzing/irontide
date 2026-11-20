@@ -7,7 +7,7 @@ the level format.
 ## Local setup
 
 1. `npm ci`. Done when `node_modules/.bin/vite` exists.
-2. `npm run assets` (downloads about 400 MB; re-run it after an interruption, it skips what is there). Done when it
+2. `npm run assets` (downloads about 370 MB; re-run it after an interruption, it skips what is there). Done when it
    exits 0 and `public/assets/models/concrete_road_barrier/concrete_road_barrier.lod.gltf` exists.
 3. `npm run build`. Done when `dist/index.html` exists and `dist/assets/tex/` holds textures.
 4. Start `node server/index.js --port <free port>` in the background. Done when
@@ -49,6 +49,10 @@ A change is finished when every check its files touch is **green**.
 - **Looking at a level.** `client/dev.html?level=<id>&p=x,y,z&yaw=&pitch=` is a free camera;
   `node scripts/level-map.mjs out.png <id>` draws the plan.
 - **Props** load from `<id>.lod.gltf`, which `npm run optimize` writes. Run it after adding a model.
+- **Weapons** are modelled in code on one skeleton (`client/src/vmparts.js`). Keep a gun's pistol grip, trigger and
+  fore-end where the skeleton puts them and the hand poses in `client/src/viewmodel.js` fit it. Judge them on the
+  bench: `npx vite --port 5177`, then `node scripts/vm-lab.mjs out.jpg views <weapon>` (also `strip <weapon> reload`).
+  A single-shot weapon fires once per trigger press, so a scripted match must release `fire` between shots.
 - **Names** of shipping lines, vessels and weapons are fictional. Invent new ones the same way.
 
 ## Reference

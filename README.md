@@ -12,11 +12,21 @@ Browser first-person shooter (three.js / WebGL2). Three levels and three ways to
 - **Campaign** – "Low Tide", a six-objective mission on Drydock (also playable co-op via multiplayer)
 - **Multiplayer** – dedicated WebSocket server, rooms of up to **64 players**, bots fill empty slots; the first player picks the level
 
+Five weapons, all carried at once and picked with the number keys:
+
+| Key | Weapon | Kind |
+| --- | --- | --- |
+| 1 | VK-7 Carbine | automatic rifle, 30 rounds |
+| 2 | Halyard 45 | submachine gun, 25 rounds |
+| 3 | Marlin 12 | semi-automatic shotgun, 7 shells of 8 pellets |
+| 4 | Kestrel .338 | bolt-action sniper rifle with a scope, 5 rounds |
+| 5 | P-9 Service | pistol, 15 rounds |
+
 ## Run
 
 ```bash
 npm install
-npm run assets      # downloads the CC0 textures/models/skies into public/assets (~400 MB, once) and builds light prop models
+npm run assets      # downloads the CC0 textures/models/skies into public/assets (~370 MB, once) and builds light prop models
 npm run play        # builds the client and starts the server on http://localhost:8787
 ```
 
@@ -38,7 +48,7 @@ Every setting and where it lives: [docs/configuration.md](docs/configuration.md)
 | --- | --- |
 | `shared/` | Engine-agnostic game core used by both browser and server: collision, navigation grid, weapons, bot AI, the authoritative `GameSim`, level data |
 | `shared/levels/` | Levels as plain data (`drydock.js`, `breakers.js`, `crosswind.js`), authoring helpers (`kit.js`), registry (`index.js`) |
-| `client/src/` | Renderer + post chain (`engine.js`), level builder (`levelbuild.js`), instanced containers (`containers.js`), scenery builders (`dressing.js`, `dressing-yard.js`, `dressing-airfield.js`), surface shaders (`materials.js`), rain (`rain.js`), FX, first-person weapons (`viewmodel.js`, `vmkit.js`, `vmcarbine.js`), characters, HUD (`hud.js`, `ui.css`), session (`game.js`), transports (`net.js`) |
+| `client/src/` | Renderer + post chain (`engine.js`), level builder (`levelbuild.js`), instanced containers (`containers.js`), scenery builders (`dressing.js`, `dressing-yard.js`, `dressing-airfield.js`), surface shaders (`materials.js`), rain (`rain.js`), FX, first-person weapons (`viewmodel.js`, `vmkit.js`, `vmparts.js` and one file per gun: `vmcarbine.js`, `vmsmg.js`, `vmshotgun.js`, `vmsniper.js`, `vmpistol.js`), characters, HUD (`hud.js`, `ui.css`), session (`game.js`), transports (`net.js`) |
 | `server/index.js` | Static file server + WebSocket rooms, one `GameSim` per room |
 | `scripts/` | Asset fetcher, headless sim test (`sim-test.mjs`), server protocol test (`net-test.mjs`), Playwright screenshot/playtest tools |
 
@@ -94,7 +104,11 @@ the sun, density, height falloff), `shafts` (volumetric sun shafts and lamp glow
 Collision, the bot navigation grid, shadows and the menu's level picker are all derived from that data — nothing else to wire up.
 New textures/models: add their Poly Haven ids to `scripts/fetch-assets.mjs`, then to `MATS` in `client/src/materials.js` or `PROP_DEFS` in `shared/props.js`.
 `client/dev.html?level=<id>&p=x,y,z&yaw=..&pitch=..` is a free camera view for checking a level,
-`node scripts/level-map.mjs out.png <id>` draws a top-down plan with colliders, spawns and objectives, and `client/vmlab.html` is a bench for the first-person weapons.
+`node scripts/level-map.mjs out.png <id>` draws a top-down plan with colliders, spawns and objectives, and `client/vmlab.html` is a bench for the first-person weapons
+(`node scripts/vm-lab.mjs out.jpg views <weapon>`, with Vite on port 5177).
+
+The guns are modelled in code. They share one skeleton (`client/src/vmparts.js`): the same pistol grip, trigger and
+magazine well in the same place, so the hand poses in `viewmodel.js` fit each of them.
 
 ## Tests
 

@@ -11,7 +11,7 @@ const snap = async (n) => { await page.screenshot({ path: `${prefix}-${n}.jpg`, 
 const pose = process.env.POSE ? JSON.parse(process.env.POSE) : { x: -12, z: 9, yaw: -2.0 };
 await page.evaluate((p) => { const g = window.__irontide.game; g.me.pos.set(p.x, 0.02, p.z); g.debugInput = { yaw: p.yaw, pitch: -0.02, keys: [] }; }, pose);
 const set = (o) => page.evaluate((o) => { const g = window.__irontide.game; Object.assign(g.debugInput, o); }, o);
-for (const w of (only && only !== 'all' ? [only] : ['carbine', 'pistol', 'marksman'])) {
+for (const w of (only && only !== 'all' ? [only] : ['carbine', 'smg', 'shotgun', 'marksman', 'pistol'])) {
   await page.evaluate((w) => { const g = window.__irontide.game; g.me.reload = null; g.switchWeapon(w); }, w);
   await set({ ads: false, fire: false, keys: [] }); await page.waitForTimeout(1500);
   if (want.includes('hip')) await snap(`${w}-hip`);

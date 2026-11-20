@@ -92,6 +92,16 @@ export class GameAudio {
       this.noise(d, t, 0.5, { type: 'lowpass', f: 5200, f2: 260, gain: 1.5 });
       this.tone(d, t, 0.34, { f: 150, f2: 34, gain: 1.6 });
       this.noise(d, t, 0.06, { type: 'highpass', f: 2500, gain: 0.9 });
+    } else if (weapon === 'shotgun') {
+      this.noise(d, t, 0.42, { type: 'lowpass', f: 4200, f2: 220, gain: 1.7 });
+      this.tone(d, t, 0.3, { f: 120, f2: 30, gain: 1.7 });
+      this.noise(d, t, 0.05, { type: 'highpass', f: 2200, gain: 0.8 });
+      this.noise(d, t + 0.05, 0.08, { type: 'bandpass', f: 1500, q: 5, gain: 0.3 });     // action cycling
+    } else if (weapon === 'smg') {
+      this.noise(d, t, 0.17, { type: 'lowpass', f: 5200, f2: 520, gain: 0.95 });
+      this.tone(d, t, 0.12, { f: 180, f2: 60, gain: 0.95 });
+      this.noise(d, t, 0.03, { type: 'highpass', f: 3200, gain: 0.6 });
+      this.noise(d, t + 0.02, 0.06, { type: 'bandpass', f: 2000, q: 6, gain: 0.22 });
     } else if (weapon === 'pistol') {
       this.noise(d, t, 0.16, { type: 'lowpass', f: 7000, f2: 700, gain: 1.0 });
       this.tone(d, t, 0.11, { f: 300, f2: 80, gain: 0.8 });

@@ -1,12 +1,15 @@
-// First-person weapons. A procedurally modelled carbine plus two photoscanned guns, held by a skinned pair of
+// First-person weapons. Five guns modelled in code (vmcarbine.js, vmsmg.js, vmshotgun.js, vmsniper.js, vmpistol.js), held by a skinned pair of
 // gloved hands (an anatomical hand rig dressed as tactical gloves, see vmkit.js), and animated in layers: aim / sway / bob / sprint / draw springs underneath, and authored
 // keyframe clips (reload, bolt cycle) on top that move the weapon, both hands, magazines and bolts.
 import * as THREE from 'three';
-import { loadModel } from './levelbuild.js';
 import { WEAPONS } from '../../shared/weapons.js';
 import { Spring, damp, makeTrack, evalTrack, makeTextures, pbrMaterial, vmProject, VM_SCALE, VM_RIM, makeHand, loadHandAsset, gripPose } from './vmkit.js';
 import { G } from './globals.js';
 import { buildCarbine, CARBINE_DIM } from './vmcarbine.js';
+import { buildSmg, SMG_DIM } from './vmsmg.js';
+import { buildShotgun, SHOTGUN_DIM } from './vmshotgun.js';
+import { buildSniper, SNIPER_DIM } from './vmsniper.js';
+import { buildPistol, P9 } from './vmpistol.js';
 
 const VM_FOV = 58;                         // the weapon is always projected with this vertical FOV, whatever the world FOV is
 const H = Math.PI / 2;
@@ -25,11 +28,25 @@ const FP = {
   hook: [0.3, 0.25, 0.2, -0.1, 0.55, 1.2, 0.8, 0, 0.6, 1.25, 0.8, 0, 1.2, 1.4, 0.7, 0, 1.3, 1.4, 0.7, 0],
   pinch: [0.85, 0.5, 0.45, 0.2, 0.85, 1.0, 0.5, 0, 0.95, 1.05, 0.5, 0, 1.3, 1.4, 0.6, 0, 1.4, 1.4, 0.6, 0],
   fist: [0.8, 0.5, 0.6, 0.2, 1.4, 1.55, 0.8, 0, 1.45, 1.55, 0.8, 0, 1.45, 1.55, 0.8, 0, 1.45, 1.5, 0.8, 0],
-  // support hand closed over the firing hand's fingers
-  wrap: [0.25, 0.15, 0.2, -0.3, 1.0, 1.1, 0.5, 0, 1.05, 1.15, 0.5, 0, 1.08, 1.15, 0.5, 0, 1.1, 1.1, 0.5, 0],
+  // one hand round a pistol: thumb laid along the frame, index on the trigger, three fingers wrapped right round the front strap
+  pistol: [0.25, 0.35, 0.3, -0.05, 0.55, 1.25, 0.55, 0.04, 1.3, 1.55, 0.6, 0, 1.32, 1.55, 0.6, 0, 1.36, 1.5, 0.6, 0],
 };
 
 // ------------------------------------------------------------------------------------------- weapon definitions
+/** Magazine change for a rifle-pattern gun: support hand strips the magazine, seats a fresh one, then runs the cocking handle `travel` metres. */
+const magReload = (travel) => ({
+        weapon: [[0, 0, 0, 0, 0, 0, 0], [0.11, -0.04, 0.085, -0.045, 0.27, 0.19, -0.37], [0.25, -0.05, 0.11, -0.07, 0.34, 0.24, -0.45], [0.5, -0.048, 0.104, -0.07, 0.32, 0.24, -0.44],
+          [0.6, -0.045, 0.112, -0.068, 0.34, 0.22, -0.41], [0.74, -0.03, 0.075, -0.04, 0.22, 0.14, -0.22], [0.84, -0.015, 0.04, -0.016, 0.12, 0.07, -0.11], [0.96, 0, 0, 0, 0, 0, 0], [1, 0, 0, 0, 0, 0, 0]],
+        L: [[0, 'guard'], [0.035, 'guard', { f: 'relax', dp: [-0.006, -0.012, -0.004] }], [0.145, 'mag'], [0.165, 'mag'], [0.25, 'mag', { dp: [0.004, -0.135, -0.012] }],
+          [0.36, 'mag', { dp: [-0.11, -0.34, -0.12], rot: [0.3, 0, 0.4] }], [0.43, 'mag', { dp: [-0.07, -0.3, -0.1], rot: [0.2, 0, 0.3] }], [0.515, 'mag', { dp: [0.004, -0.12, -0.014], rot: [-0.05, 0, 0] }],
+          [0.565, 'mag'], [0.6, 'mag', { dp: [0, 0.004, 0] }], [0.64, 'mag', { f: 'relax', dp: [-0.02, -0.02, 0.0] }], [0.74, 'charge'], [0.795, 'charge', { dp: [0, 0, -travel] }],
+          [0.825, 'charge', { dp: [-0.012, 0.004, -travel - 0.012], f: 'relax' }], [0.95, 'guard'], [1, 'guard']],
+        parts: { bolt: [[0, 0], [0.74, 0], [0.795, 1], [0.803, 1], [0.826, 0], [1, 0]], release: [[0, 1], [0.803, 1], [0.826, 0], [1, 0]] },
+        mag: { hand: 'L', grab: 0.165, seat: 0.565 },
+        kicks: [[0.165, { y: -0.25, pitch: -0.9 }], [0.25, { y: 0.35, pitch: 0.8, roll: 0.6 }], [0.565, { y: 0.9, pitch: 1.6, roll: -1.2 }], [0.6, { y: 0.4, pitch: 0.6 }], [0.8, { z: 0.5, pitch: 0.7 }], [0.826, { z: -1.4, pitch: -2.4, roll: 0.8 }]],
+        cues: [[0.16, 'magout'], [0.56, 'magin'], [0.6, 'tap'], [0.824, 'boltfwd']], freeCues: [[0.765, 'boltback']],
+      });
+
 // Camera space: +x right, +y up, -z forward. Grip inputs are in weapon space as [x, y, forward].
 // Clip tracks: weapon = [t, dx, dy, dz, rx, ry, rz] additive in camera space; L / R = [t, gripName, {dp, f, rot}].
 const DEFS = {
@@ -45,47 +62,123 @@ const DEFS = {
       charge: { palm: [-0.05, -0.012, 0.094], n: [1, 0.05, 0.25], d: [0.1, 0.9, 0.42], f: 'hook' },
     },
     rest: { R: 'fire', L: 'guard' },
+    clips: { reload: magReload(CARBINE_DIM.boltTravel) },
+    setup(w) {
+      w.applyParts = (w, part, cyc, vm) => { w.bolt.position.z = CARBINE_DIM.boltTravel * Math.max(part.bolt || 0, cyc, vm.lockAmount(w, part)); };
+      w.partProbe = (w) => [w.bolt.position.z];
+    },
+  },
+  smg: {
+    hip: [0.104, -0.122, -0.215], hipRot: [0.03, 0.115, -0.045], ads: [0, -SMG_DIM.sightY, -0.19], adsVmFov: 45,
+    muzzle: SMG_DIM.muzzle, eject: SMG_DIM.eject, flash: 0.19,
+    kick: { back: 1.7, pitch: 1.25, yaw: 0.5, roll: 0.7, cycle: 0.08 },
+    elbows: { R: [0.26, -0.4, 0.16], L: [-0.2, -0.56, -0.06] },
+    grips: {
+      fire: { palm: [0.0105, -0.1, -0.1], n: [-1, 0.03, -0.12], d: [0, -0.2, 0.98], f: 'grip' },
+      guard: { palm: [-0.011, -0.0365, 0.212], n: [0.3, 1, 0], d: [0.78, 0.1, 0.62], f: 'guard' },
+      mag: { palm: [-0.0148, -0.165, 0.074], n: [1, 0.06, 0.1], d: [0.0, -0.14, 0.99], f: 'mag' },
+      charge: { palm: [-0.052, -0.006, 0.094], n: [1, 0.05, 0.25], d: [0.1, 0.9, 0.42], f: 'hook' },
+    },
+    rest: { R: 'fire', L: 'guard' },
+    clips: { reload: magReload(SMG_DIM.boltTravel) },
+    setup(w) {
+      w.applyParts = (w, part, cyc, vm) => { w.bolt.position.z = SMG_DIM.boltTravel * Math.max(part.bolt || 0, cyc, vm.lockAmount(w, part)); };
+      w.partProbe = (w) => [w.bolt.position.z];
+    },
+  },
+  shotgun: {
+    hip: [0.104, -0.122, -0.215], hipRot: [0.03, 0.115, -0.045], ads: [0, -SHOTGUN_DIM.sightY, -0.2], adsVmFov: 50,
+    muzzle: SHOTGUN_DIM.muzzle, eject: SHOTGUN_DIM.eject, flash: 0.36,
+    kick: { back: 5.6, pitch: 5.4, yaw: 1.0, roll: 1.6, cycle: 0.12 },
+    elbows: { R: [0.26, -0.4, 0.16], L: [-0.2, -0.56, -0.06] },
+    grips: {
+      fire: { palm: [0.0105, -0.1, -0.1], n: [-1, 0.03, -0.12], d: [0, -0.2, 0.98], f: 'grip' },
+      guard: { palm: [-0.011, -0.0575, 0.24], n: [0.3, 1, 0], d: [0.78, 0.1, 0.62], f: 'guard' },
+      feed: { palm: [-0.006, -0.082, -0.005], n: [0.2, 1, 0.1], d: [0.3, 0.2, 0.93], f: 'pinch' },      // thumb pushing a shell up into the loading port
+    },
+    rest: { R: 'fire', L: 'guard' },
+    setup(w, vm) {
+      w.applyParts = (w, part, cyc) => { w.bolt.position.z = SHOTGUN_DIM.boltTravel * cyc; };
+      w.partProbe = (w) => [w.bolt.position.z];
+      const holder = new THREE.Group(); holder.add(w.shell); holder.position.set(-0.024, -0.03, -0.062); holder.rotation.set(0.1, 0.2, 0); holder.visible = false;
+      vm.hands.L.root.add(holder); w.round = holder;                    // the shell the loading hand carries
+    },
     clips: {
-      reload: {
-        weapon: [[0, 0, 0, 0, 0, 0, 0], [0.11, -0.04, 0.085, -0.045, 0.27, 0.19, -0.37], [0.25, -0.05, 0.11, -0.07, 0.34, 0.24, -0.45], [0.5, -0.048, 0.104, -0.07, 0.32, 0.24, -0.44],
-          [0.6, -0.045, 0.112, -0.068, 0.34, 0.22, -0.41], [0.74, -0.03, 0.075, -0.04, 0.22, 0.14, -0.22], [0.84, -0.015, 0.04, -0.016, 0.12, 0.07, -0.11], [0.96, 0, 0, 0, 0, 0, 0], [1, 0, 0, 0, 0, 0, 0]],
-        L: [[0, 'guard'], [0.035, 'guard', { f: 'relax', dp: [-0.006, -0.012, -0.004] }], [0.145, 'mag'], [0.165, 'mag'], [0.25, 'mag', { dp: [0.004, -0.135, -0.012] }],
-          [0.36, 'mag', { dp: [-0.11, -0.34, -0.12], rot: [0.3, 0, 0.4] }], [0.43, 'mag', { dp: [-0.07, -0.3, -0.1], rot: [0.2, 0, 0.3] }], [0.515, 'mag', { dp: [0.004, -0.12, -0.014], rot: [-0.05, 0, 0] }],
-          [0.565, 'mag'], [0.6, 'mag', { dp: [0, 0.004, 0] }], [0.64, 'mag', { f: 'relax', dp: [-0.02, -0.02, 0.0] }], [0.74, 'charge'], [0.795, 'charge', { dp: [0, 0, -CARBINE_DIM.boltTravel] }],
-          [0.825, 'charge', { dp: [-0.012, 0.004, -CARBINE_DIM.boltTravel - 0.012], f: 'relax' }], [0.95, 'guard'], [1, 'guard']],
-        parts: { bolt: [[0, 0], [0.74, 0], [0.795, 1], [0.803, 1], [0.826, 0], [1, 0]], release: [[0, 1], [0.803, 1], [0.826, 0], [1, 0]] },
-        mag: { hand: 'L', grab: 0.165, seat: 0.565 },
-        kicks: [[0.165, { y: -0.25, pitch: -0.9 }], [0.25, { y: 0.35, pitch: 0.8, roll: 0.6 }], [0.565, { y: 0.9, pitch: 1.6, roll: -1.2 }], [0.6, { y: 0.4, pitch: 0.6 }], [0.8, { z: 0.5, pitch: 0.7 }], [0.826, { z: -1.4, pitch: -2.4, roll: 0.8 }]],
-        cues: [[0.16, 'magout'], [0.56, 'magin'], [0.6, 'tap'], [0.824, 'boltfwd']], freeCues: [[0.765, 'boltback']],
+      reload: {      // rolled over to the left, four shells thumbed into the tube
+        weapon: [[0, 0, 0, 0, 0, 0, 0], [0.08, -0.02, 0.05, -0.02, 0.2, 0.1, -0.5], [0.16, -0.025, 0.062, -0.03, 0.25, 0.12, -0.64], [0.84, -0.025, 0.062, -0.03, 0.25, 0.12, -0.62], [0.92, -0.008, 0.02, -0.008, 0.08, 0.04, -0.2], [0.98, 0, 0, 0, 0, 0, 0], [1, 0, 0, 0, 0, 0, 0]],
+        L: [[0, 'guard'], [0.07, 'guard', { f: 'relax', dp: [-0.01, -0.02, 0] }],
+          ...[0.16, 0.325, 0.49, 0.655].flatMap((t) => [[t, 'feed', { dp: [-0.06, -0.24, -0.1] }], [t + 0.075, 'feed', { dp: [0, -0.03, -0.02] }], [t + 0.105, 'feed'], [t + 0.13, 'feed', { dp: [0, 0.006, 0.032] }]]),
+          [0.84, 'feed', { f: 'relax', dp: [-0.03, -0.08, -0.02] }], [0.95, 'guard'], [1, 'guard']],
+        show: { round: [[0.17, 0.285], [0.335, 0.45], [0.5, 0.615], [0.665, 0.78]] },
+        kicks: [[0.29, { y: 0.3, pitch: 0.4 }], [0.455, { y: 0.3, pitch: 0.4 }], [0.62, { y: 0.3, pitch: 0.4 }], [0.785, { y: 0.3, pitch: 0.4 }]],
+        cues: [[0.285, 'round'], [0.45, 'round'], [0.615, 'round'], [0.78, 'round']],
+      },
+    },
+  },
+  marksman: {
+    hip: [0.104, -0.128, -0.27], hipRot: [0.025, 0.105, -0.04], ads: [0, -SNIPER_DIM.sightY, -0.2], adsVmFov: 50,
+    muzzle: SNIPER_DIM.muzzle, eject: SNIPER_DIM.eject, flash: 0.32,
+    kick: { back: 5.2, pitch: 6.5, yaw: 0.9, roll: 1.8, cycle: 0 },
+    elbows: { R: [0.26, -0.4, 0.16], L: [-0.2, -0.56, -0.06] },
+    grips: {
+      fire: { palm: [0.0105, -0.1, -0.1], n: [-1, 0.03, -0.12], d: [0, -0.2, 0.98], f: 'grip' },
+      forend: { palm: [-0.011, -0.056, 0.27], n: [0.3, 1, 0], d: [0.78, 0.1, 0.62], f: 'guard' },
+      mag: { palm: [-0.0148, -0.094, 0.072], n: [1, 0.06, 0.1], d: [0.0, -0.14, 0.99], f: 'mag' },
+      bolt: { palm: [0.058, 0.002, -0.088], n: [-0.5, 0.85, 0], d: [-0.3, 0.1, 0.95], f: 'pinch' },
+      boltUp: { palm: [0.05, 0.06, -0.088], n: [-0.9, 0.4, 0], d: [-0.2, 0.35, 0.92], f: 'pinch' },
+    },
+    rest: { R: 'fire', L: 'forend' },
+    setup(w) {
+      w.applyParts = (w, part) => { w.bolt.rotation.z = 1.05 * (part.lift || 0); w.bolt.position.z = SNIPER_DIM.boltTravel * (part.pull || 0); };
+      w.partProbe = (w) => [w.bolt.position.z, w.bolt.rotation.z * 0.05];
+    },
+    clips: {
+      reload: {      // the support hand changes the box magazine, then the firing hand runs the bolt
+        weapon: [[0, 0, 0, 0, 0, 0, 0], [0.08, -0.02, 0.03, 0, 0.06, 0.08, -0.2], [0.2, -0.03, 0.045, 0, 0.1, 0.12, -0.3], [0.62, -0.03, 0.045, 0, 0.1, 0.12, -0.3], [0.72, -0.016, 0.02, 0.008, 0.04, 0.06, 0.12], [0.86, -0.012, 0.012, 0.004, 0.03, 0.04, 0.16], [0.92, -0.004, 0.004, 0, 0.01, 0.01, 0.05], [0.98, 0, 0, 0, 0, 0, 0], [1, 0, 0, 0, 0, 0, 0]],
+        L: [[0, 'forend'], [0.05, 'forend', { f: 'relax', dp: [-0.006, -0.012, -0.004] }], [0.15, 'mag'], [0.17, 'mag'], [0.25, 'mag', { dp: [0.004, -0.11, -0.012] }],
+          [0.34, 'mag', { dp: [-0.1, -0.32, -0.12], rot: [0.3, 0, 0.4] }], [0.4, 'mag', { dp: [-0.07, -0.28, -0.1], rot: [0.2, 0, 0.3] }], [0.5, 'mag', { dp: [0.004, -0.1, -0.014] }],
+          [0.56, 'mag'], [0.59, 'mag', { dp: [0, 0.004, 0] }], [0.63, 'mag', { f: 'relax', dp: [-0.02, -0.02, 0] }], [0.74, 'forend'], [1, 'forend']],
+        R: [[0, 'fire'], [0.6, 'fire'], [0.64, 'fire', { f: 'relax', dp: [0.012, 0.02, 0] }], [0.69, 'bolt'], [0.725, 'boltUp'], [0.765, 'boltUp', { dp: [0, 0, -SNIPER_DIM.boltTravel] }],
+          [0.8, 'boltUp', { dp: [0, 0, -SNIPER_DIM.boltTravel] }], [0.84, 'boltUp'], [0.875, 'bolt'], [0.91, 'bolt', { f: 'relax', dp: [0.012, 0, -0.012] }], [0.97, 'fire'], [1, 'fire']],
+        parts: { lift: [[0, 0], [0.69, 0], [0.725, 1], [0.84, 1], [0.875, 0], [1, 0]], pull: [[0, 0], [0.725, 0], [0.765, 1], [0.8, 1], [0.84, 0], [1, 0]] },
+        mag: { hand: 'L', grab: 0.17, seat: 0.56 },
+        kicks: [[0.17, { y: -0.25, pitch: -0.7 }], [0.56, { y: 0.8, pitch: 1.2, roll: -0.9 }], [0.59, { y: 0.3 }], [0.725, { roll: 0.8 }], [0.765, { z: 0.8, pitch: 0.5 }], [0.84, { z: -1.1, pitch: -0.8 }], [0.875, { roll: -1.0 }]],
+        cues: [[0.16, 'magout'], [0.555, 'magin'], [0.59, 'tap'], [0.71, 'boltup'], [0.75, 'boltback'], [0.83, 'boltfwd'], [0.87, 'boltdown']],
+      },
+      bolt: {
+        weapon: [[0, 0, 0, 0, 0, 0, 0], [0.17, -0.012, -0.012, 0.008, 0.03, 0.04, 0.16], [0.3, -0.016, -0.016, 0.018, 0.05, 0.05, 0.22], [0.56, -0.012, -0.012, 0.004, 0.03, 0.04, 0.17], [0.72, -0.004, -0.004, 0, 0.01, 0.01, 0.05], [0.92, 0, 0, 0, 0, 0, 0], [1, 0, 0, 0, 0, 0, 0]],
+        R: [[0, 'fire'], [0.07, 'fire', { f: 'relax', dp: [0.012, 0.02, 0] }], [0.15, 'bolt'], [0.2, 'boltUp'], [0.3, 'boltUp', { dp: [0, 0, -SNIPER_DIM.boltTravel] }], [0.42, 'boltUp', { dp: [0, 0, -SNIPER_DIM.boltTravel] }], [0.56, 'boltUp'], [0.66, 'bolt'],
+          [0.74, 'bolt', { f: 'relax', dp: [0.012, 0, -0.012] }], [0.93, 'fire'], [1, 'fire']],
+        parts: { lift: [[0, 0], [0.15, 0], [0.2, 1], [0.56, 1], [0.66, 0], [1, 0]], pull: [[0, 0], [0.2, 0], [0.3, 1], [0.42, 1], [0.56, 0], [1, 0]] },
+        kicks: [[0.2, { roll: 0.7 }], [0.3, { z: 0.9, pitch: 0.6 }], [0.56, { z: -1.1, pitch: -0.8 }], [0.66, { roll: -0.9 }]],
+        cues: [],
       },
     },
   },
   pistol: {
-    model: 'service_pistol', rot: [0, H, 0], scale: 1.08, off: [0, 0, 0], keep: /pistol_a|slide_a|hammer_a|trigger_a|magazine_loaded/,
-    hip: [0.098, -0.112, -0.36], hipRot: [0.07, 0.27, -0.12], ads: [0, -0.0885, -0.43], adsVmFov: 50,
-    muzzle: [0, 0.071, -0.2], eject: [0.02, 0.078, -0.01], flash: 0.17,
+    // Held in one hand, the way a sidearm reads best from behind: the firing hand wraps the grip (knuckles at its front
+    // right corner, web under the tang) and the forearm comes in from the lower right. The other hand waits below the
+    // frame and only comes up with a fresh magazine. Origin = middle of the grip (see vmpistol.js).
+    hip: [0.105, -0.118, -0.31], hipRot: [0.06, 0.3, -0.1], ads: [0, -P9.sightY, -0.4], adsVmFov: 50,
+    muzzle: P9.muzzle, eject: P9.eject, flash: 0.17,
     kick: { back: 2.4, pitch: 8.5, yaw: 1.1, roll: 1.6, cycle: 0.06 },
-    elbows: { R: [0.2, -0.62, -0.1], L: [-0.08, -0.64, -0.12] },
+    elbows: { R: [0.4, -0.5, -0.08], L: [-0.3, -0.8, 0.05] },
     grips: {
-      fire: { palm: [0.0135, 0.022, -0.038], n: [-0.78, 0.0, 0.62], d: [0.6, -0.2, 0.775], f: 'grip' },
-      support: { palm: [-0.021, 0.004, -0.02], n: [0.85, 0.1, 0.5], d: [-0.3, -0.5, 0.81], f: 'wrap' },
-      magIn: { palm: [-0.004, -0.082, -0.03], n: [0.2, 1, 0.15], d: [0.55, 0.15, 0.82], f: 'mag' },
-      rack: { palm: [0.0, 0.094, -0.012], n: [0, -1, 0], d: [1, -0.1, 0.25], f: 'hook' },
+      fire: { palm: [0.0082, 0.0041, -0.0154], n: [-1, 0, 0.2], d: [0.18, -0.2, 0.96], f: 'pistol' },
+      low: { palm: [-0.2, -0.42, -0.12], n: [0.6, 0.6, 0.5], d: [0.2, 0.3, 0.9], f: 'relax' },
+      magIn: { palm: [-0.0043, -0.0873, -0.032], n: [0.2, 1, 0.15], d: [0.55, 0.15, 0.82], f: 'mag' },
     },
-    rest: { R: 'fire', L: 'support' },
+    rest: { R: 'fire', L: 'low' },
     setup(w) {
-      const n = w.node, d = DEFS.pistol; w.slide = n.slide_a; w.slideX = n.slide_a.position.x; w.hammer = n.hammer_a;
-      const mag = new THREE.Group(), inner = new THREE.Group(); inner.rotation.set(...d.rot); inner.scale.setScalar(d.scale);
-      n.magazine_loaded.position.set(-0.0075, 0, 0); inner.add(n.magazine_loaded); mag.add(inner); w.group.add(mag); w.mag = mag;
-      w.applyParts = (w, part, cyc, vm) => { const k = Math.max(vm.lockAmount(w, part), cyc); w.slide.position.x = w.slideX - 0.03 * k; w.hammer.rotation.z = 0.9 * Math.min(1, k * 3); };
-      w.partProbe = (w) => [w.slide.position.x];
+      w.applyParts = (w, part, cyc, vm) => { const k = Math.max(vm.lockAmount(w, part), cyc); w.slide.position.z = P9.slideTravel * k; w.hammer.rotation.x = 0.75 * Math.min(1, k * 3); };
+      w.partProbe = (w) => [w.slide.position.z];
     },
     clips: {
       reload: {
         weapon: [[0, 0, 0, 0, 0, 0, 0], [0.11, -0.03, 0.075, -0.01, 0.3, 0.06, -0.4], [0.32, -0.036, 0.088, -0.012, 0.34, 0.08, -0.46], [0.55, -0.034, 0.084, -0.012, 0.32, 0.08, -0.44], [0.66, -0.03, 0.09, -0.012, 0.33, 0.06, -0.4],
           [0.78, -0.016, 0.045, -0.005, 0.14, 0.03, -0.17], [0.88, -0.006, 0.015, 0, 0.04, 0.01, -0.05], [0.96, 0, 0, 0, 0, 0, 0], [1, 0, 0, 0, 0, 0, 0]],
-        L: [[0, 'support'], [0.08, 'support', { f: 'relax', dp: [-0.02, -0.03, -0.01] }], [0.22, 'magIn', { dp: [-0.1, -0.3, -0.12], rot: [0.3, 0, 0.3] }], [0.36, 'magIn', { dp: [-0.09, -0.3, -0.11], rot: [0.3, 0, 0.3] }],
-          [0.5, 'magIn', { dp: [0, -0.095, -0.022] }], [0.6, 'magIn'], [0.645, 'magIn', { dp: [0, 0.004, 0] }], [0.7, 'magIn', { f: 'relax', dp: [-0.022, -0.02, 0] }], [0.9, 'support'], [1, 'support']],
+        L: [[0, 'low'], [0.1, 'low'], [0.24, 'magIn', { dp: [-0.1, -0.3, -0.12], rot: [0.3, 0, 0.3] }], [0.36, 'magIn', { dp: [-0.09, -0.3, -0.11], rot: [0.3, 0, 0.3] }],
+          [0.5, 'magIn', { dp: [0, -0.095, -0.022] }], [0.6, 'magIn'], [0.645, 'magIn', { dp: [0, 0.004, 0] }], [0.7, 'magIn', { f: 'relax', dp: [-0.022, -0.02, 0] }], [0.92, 'low'], [1, 'low']],
         parts: { release: [[0, 1], [0.735, 1], [0.76, 0], [1, 0]] },
         mag: { hand: 'L', grab: 0.36, seat: 0.6, drop: [0.13, 0.33], dropDir: [0, -0.975, 0.22], dur: 1.5 },
         kicks: [[0.13, { y: 0.3, pitch: 0.5 }], [0.6, { y: 0.9, pitch: 1.4, roll: -0.8 }], [0.645, { y: 0.3 }]],
@@ -94,52 +187,9 @@ const DEFS = {
       },
     },
   },
-  marksman: {
-    model: 'bolt_action_rifle_7_62', rot: [0, H, 0], scale: 1, off: [0, 0.02, -0.29], hide: /bullet|bolt_b/,
-    hip: [0.1, -0.152, -0.35], hipRot: [0.02, 0.085, -0.03], ads: [0, -0.115, -0.24], adsVmFov: 50,
-    muzzle: [0, 0.075, -0.9], eject: [0.035, 0.08, -0.04], flash: 0.3,
-    kick: { back: 5.2, pitch: 6.5, yaw: 0.9, roll: 1.8, cycle: 0 },
-    elbows: { R: [0.26, -0.4, 0.2], L: [-0.2, -0.56, -0.06] },
-    grips: {
-      fire: { palm: [0.0135, 0.03, -0.058], n: [-0.75, 0.25, 0.6], d: [0.55, -0.45, 0.7], f: 'grip' },
-      forend: { palm: [-0.008, 0.037, 0.3], n: [0.3, 1, 0], d: [0.78, 0.1, 0.62], f: 'guard' },
-      bolt: { palm: [0.042, 0.024, 0.03], n: [-0.5, 0.85, 0], d: [-0.3, 0.1, 0.95], f: 'pinch' },
-      boltUp: { palm: [0.05, 0.088, 0.03], n: [-0.9, 0.4, 0], d: [-0.2, 0.35, 0.92], f: 'pinch' },
-      feed: { palm: [0.046, 0.118, 0.04], n: [-0.6, -0.8, 0], d: [-0.5, 0.1, 0.86], f: 'pinch' },
-    },
-    rest: { R: 'fire', L: 'forend' },
-    setup(w, vm) {
-      const n = w.node; w.boltNode = n.bolt_a; w.boltX = n.bolt_a.position.x;
-      for (const m of new Set([n.main, n.trigger].filter(Boolean).map((o) => o.material))) m.color.setRGB(0.46, 0.36, 0.3);   // calmer, darker walnut
-      w.applyParts = (w, part) => { w.boltNode.rotation.x = -1.15 * (part.lift || 0); w.boltNode.position.x = w.boltX - 0.088 * (part.pull || 0); };
-      w.partProbe = (w) => [w.boltNode.position.x, w.boltNode.rotation.x * 0.05];
-      const r = n.bullet_54mm.clone(); r.visible = true; r.position.set(0, 0, 0); r.rotation.set(0, H, 0); r.material = n.bullet_54mm.material;
-      const holder = new THREE.Group(); holder.add(r); holder.position.set(-0.03, -0.034, -0.1); holder.rotation.set(0.2, 0.5, 0); holder.visible = false;
-      vm.hands.R.root.add(holder); w.round = holder;
-    },
-    clips: {
-      reload: {
-        weapon: [[0, 0, 0, 0, 0, 0, 0], [0.08, -0.03, 0.03, 0.0, -0.02, 0.1, 0.26], [0.22, -0.04, 0.04, 0.0, -0.04, 0.13, 0.34], [0.7, -0.04, 0.04, 0.0, -0.04, 0.13, 0.33], [0.82, -0.025, 0.025, 0, -0.02, 0.08, 0.2], [0.9, -0.01, 0.01, 0, 0, 0.03, 0.08], [0.97, 0, 0, 0, 0, 0, 0], [1, 0, 0, 0, 0, 0, 0]],
-        R: [[0, 'fire'], [0.07, 'fire', { f: 'relax', dp: [0.012, 0.02, 0] }], [0.13, 'bolt'], [0.172, 'boltUp'], [0.215, 'boltUp', { dp: [0, 0, -0.088] }], [0.3, 'feed', { dp: [0.16, -0.36, -0.2] }], [0.35, 'feed', { dp: [0.15, -0.34, -0.2] }],
-          [0.42, 'feed', { dp: [0.004, 0.04, 0] }], [0.455, 'feed'], [0.5, 'feed', { dp: [0.004, 0.034, -0.008] }], [0.545, 'feed'], [0.59, 'feed', { dp: [0.004, 0.034, -0.008] }], [0.635, 'feed'], [0.69, 'feed', { dp: [0.02, 0.03, -0.04], f: 'relax' }],
-          [0.75, 'boltUp', { dp: [0, 0, -0.088] }], [0.805, 'boltUp'], [0.848, 'bolt'], [0.9, 'bolt', { f: 'relax', dp: [0.012, 0, -0.012] }], [0.97, 'fire'], [1, 'fire']],
-        parts: { lift: [[0, 0], [0.13, 0], [0.172, 1], [0.805, 1], [0.848, 0], [1, 0]], pull: [[0, 0], [0.172, 0], [0.215, 1], [0.75, 1], [0.805, 0], [1, 0]] },
-        show: { round: [[0.33, 0.455], [0.475, 0.545], [0.565, 0.635]] },
-        kicks: [[0.172, { roll: 0.8 }], [0.215, { z: 0.8, pitch: 0.5 }], [0.455, { y: -0.5, pitch: -0.5 }], [0.545, { y: -0.5, pitch: -0.5 }], [0.635, { y: -0.5, pitch: -0.5 }], [0.805, { z: -1.1, pitch: -0.8 }], [0.848, { roll: -1.0 }]],
-        cues: [[0.15, 'boltup'], [0.2, 'boltback'], [0.45, 'round'], [0.54, 'round'], [0.63, 'round'], [0.79, 'boltfwd'], [0.84, 'boltdown']],
-      },
-      bolt: {
-        weapon: [[0, 0, 0, 0, 0, 0, 0], [0.17, -0.012, -0.012, 0.008, 0.03, 0.04, 0.16], [0.3, -0.016, -0.016, 0.018, 0.05, 0.05, 0.22], [0.56, -0.012, -0.012, 0.004, 0.03, 0.04, 0.17], [0.72, -0.004, -0.004, 0, 0.01, 0.01, 0.05], [0.92, 0, 0, 0, 0, 0, 0], [1, 0, 0, 0, 0, 0, 0]],
-        R: [[0, 'fire'], [0.07, 'fire', { f: 'relax', dp: [0.012, 0.02, 0] }], [0.15, 'bolt'], [0.2, 'boltUp'], [0.3, 'boltUp', { dp: [0, 0, -0.088] }], [0.42, 'boltUp', { dp: [0, 0, -0.088] }], [0.56, 'boltUp'], [0.66, 'bolt'],
-          [0.74, 'bolt', { f: 'relax', dp: [0.012, 0, -0.012] }], [0.93, 'fire'], [1, 'fire']],
-        parts: { lift: [[0, 0], [0.15, 0], [0.2, 1], [0.56, 1], [0.66, 0], [1, 0]], pull: [[0, 0], [0.2, 0], [0.3, 1], [0.42, 1], [0.56, 0], [1, 0]] },
-        kicks: [[0.2, { roll: 0.7 }], [0.3, { z: 0.9, pitch: 0.6 }], [0.56, { z: -1.1, pitch: -0.8 }], [0.66, { roll: -0.9 }]],
-        cues: [],
-      },
-    },
-  },
 };
 
+const MODELLED = { carbine: buildCarbine, smg: buildSmg, shotgun: buildShotgun, marksman: buildSniper, pistol: buildPistol };
 
 // ------------------------------------------------------------------------------------------- clip machinery
 const HAND_DIM = 27;       // pos(3) quat(4) fingers(20)
@@ -228,21 +278,10 @@ export class ViewModel {
     const skin = await loadHandAsset();
     this.hands = { R: makeHand(glove, false, skin), L: makeHand(glove, true, skin) };
     this.lensMat = lensMaterial();
-    // ---- carbine
-    { const c = buildCarbine(gun); c.lens.material = this.lensMat;
-      this.weapons.carbine = { ...DEFS.carbine, ...compileWeapon(DEFS.carbine), group: c.group, mag: c.mag, bolt: c.bolt, name: 'carbine',
-        applyParts: (w, part, cyc, vm) => { w.bolt.position.z = CARBINE_DIM.boltTravel * Math.max(part.bolt || 0, cyc, vm.lockAmount(w, part)); },
-        partProbe: (w) => [w.bolt.position.z] }; }
-    // ---- photoscanned pistol + rifle
-    for (const k of ['pistol', 'marksman']) {
-      const d = DEFS[k], g = new THREE.Group(), src = (await loadModel(d.model)).scene.clone(true), node = {};
-      src.rotation.set(...d.rot); src.scale.setScalar(d.scale); src.position.set(...d.off);
-      src.traverse((o) => {
-        node[o.name === d.model ? 'main' : o.name.replace(d.model + '_', '')] = o;
-        if (o.isMesh) { o.material = vmProject(o.material.clone()); if ((d.keep && !d.keep.test(o.name)) || (d.hide && d.hide.test(o.name))) o.visible = false; }
-      });
-      g.add(src);
-      const w = this.weapons[k] = { ...d, ...compileWeapon(d), group: g, src, node, name: k };
+    // ---- guns modelled in code
+    for (const [k, build] of Object.entries(MODELLED)) {
+      const d = DEFS[k], c = build(gun); if (c.lens) c.lens.material = this.lensMat;
+      const w = this.weapons[k] = { ...d, ...compileWeapon(d), ...c, name: k };
       d.setup?.(w, this);
     }
     for (const w of Object.values(this.weapons)) {
@@ -256,6 +295,19 @@ export class ViewModel {
       w.group.traverse((o) => { if (o.isMesh) { o.frustumCulled = false; o.castShadow = false; o.receiveShadow = true; } });
     }
     this.root.add(this.flash);
+  }
+
+  /**
+   * Bench hook (client/vmlab.html): replaces parts of a weapon's definition and recompiles its poses, so a grip can be
+   * tuned without a reload. patch: { grips: {name: {...}}, elbows: {R, L}, hip, hipRot, ads, scale, off, fp: {pose: [...]} }
+   */
+  retune(name, patch) {
+    const w = this.weapons[name], def = DEFS[name];
+    if (patch.fp) Object.assign(FP, patch.fp);
+    for (const [k, v] of Object.entries(patch)) if (k !== 'fp') def[k] = k === 'grips' || k === 'elbows' ? { ...def[k], ...v } : v;
+    Object.assign(w, { hip: def.hip, hipRot: def.hipRot, ads: def.ads, elbows: def.elbows }, compileWeapon(def));
+    w.state = {}; for (const k of Object.keys(w.clips)) w.state[k] = { t: -1, w: 0 };
+    for (const c of Object.values(w.clips)) if (c.mag) { const a = evalTrack(c.hands[c.mag.hand], c.mag.seat, new Float64Array(HAND_DIM)); c.mag.hold = handMatrix(a, c.mag.hand === 'L', new THREE.Matrix4()).invert().multiply(w.magSeat); }
   }
 
   setWeapon(name) {

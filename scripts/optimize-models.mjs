@@ -16,7 +16,7 @@ const root = fileURLToPath(new URL('../public/assets/models/', import.meta.url))
 const BUDGET = { default: 3500, concrete_road_barrier: 2600, street_lamp_01: 5000, modular_chainlink_fence: 9000, portable_generator: 6000, vintage_radio_transceiver: 6000, industrial_storage_cart: 5000, hand_truck: 4000, exterior_aircon_unit: 4000,
   // placed by the dozen on the large levels, so they are kept lighter
   concrete_road_barrier_02: 1100, metal_jerrycan_green: 900, steel_frame_shelves_01: 1600, small_lpg_tank: 1500, rusted_wheel_rim_01: 800, utility_box_02: 1500, tool_cart: 2400, portable_welding_cart: 2600, lateral_sea_marker: 2400 };
-const SKIP = new Set(['service_pistol', 'bolt_action_rifle_7_62']);          // viewed up close in first person
+const SKIP = new Set();
 const TEX = 1024;
 
 const tris = (doc) => { let n = 0; for (const m of doc.getRoot().listMeshes()) for (const p of m.listPrimitives()) n += (p.getIndices() ? p.getIndices().getCount() : p.getAttribute('POSITION').getCount()) / 3; return Math.round(n); };
