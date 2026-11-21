@@ -13,6 +13,7 @@ import { Hud } from './hud.js';
 import { Game } from './game.js';
 import { LocalTransport, WsTransport } from './net.js';
 import { LEVELS, DEFAULT_LEVEL, recommendedPlayers } from '../../shared/levels/index.js';
+import { CREWS, crewsOf } from '../../shared/crews.js';
 import { MAX_PLAYERS } from '../../shared/sim.js';
 
 const $ = (s) => document.querySelector(s);
@@ -20,18 +21,23 @@ const params = new URLSearchParams(location.search);
 
 // ---------------------------------------------------------------- settings
 const defaults = { mode: 'quick', quality: 'high', dynres: 'on', sens: 14, invertY: 'off', aim: 'toggle', fov: 78, volume: 80, name: 'Player' + ((Math.random() * 900 + 100) | 0),
-  q: { mode: 'dm', level: DEFAULT_LEVEL, bots: 9, skill: 'normal' }, c: { skill: 'normal' }, m: { server: '', room: 'public', mode: 'tdm', level: DEFAULT_LEVEL, fill: 12 } };
+  q: { mode: 'dm', level: DEFAULT_LEVEL, bots: 9, skill: 'normal' }, c: { skill: 'normal' }, m: { server: '', room: 'public', mode: 'tdm', level: DEFAULT_LEVEL, fill: 12 },
+  look: { b: crewsOf(1)[0], r: crewsOf(2)[0], d: 'b' } };      // look: the crew worn on BLUE, on RED, and which of the two in a deathmatch
 let settings = structuredClone(defaults);
-try { const s = JSON.parse(localStorage.getItem('irontide') || '{}'); settings = { ...defaults, ...s, q: { ...defaults.q, ...s.q }, c: { ...defaults.c, ...s.c }, m: { ...defaults.m, ...s.m } }; } catch { /* storage unavailable */ }
+try { const s = JSON.parse(localStorage.getItem('irontide') || '{}'); settings = { ...defaults, ...s, q: { ...defaults.q, ...s.q }, c: { ...defaults.c, ...s.c }, m: { ...defaults.m, ...s.m }, look: { ...defaults.look, ...s.look } }; } catch { /* storage unavailable */ }
 if (params.get('q')) settings.quality = params.get('q');
 if (LEVELS[params.get('level')]) settings.q.level = settings.m.level = params.get('level');
 if (!LEVELS[settings.q.level]) settings.q.level = DEFAULT_LEVEL;
 if (!LEVELS[settings.m.level]) settings.m.level = DEFAULT_LEVEL;
 if (!['quick', 'campaign', 'multi'].includes(settings.mode)) settings.mode = 'quick';
+if (!crewsOf(1).includes(settings.look.b)) settings.look.b = defaults.look.b;
+if (!crewsOf(2).includes(settings.look.r)) settings.look.r = defaults.look.r;
+/** The player's crew choices as the sim takes them when they join: "blue,red,deathmatch". */
+const lookString = () => [settings.look.b, settings.look.r, settings.look[settings.look.d === 'r' ? 'r' : 'b']].join(',');
 settings.q.bots = Math.max(1, Math.min(MAX_PLAYERS - 1, +settings.q.bots || defaults.q.bots)); settings.m.fill = Math.max(0, Math.min(MAX_PLAYERS, +settings.m.fill || 0));
 const save = () => { try { localStorage.setItem('irontide', JSON.stringify(settings)); } catch { /* ignore */ } };
 const getOpt = (path) => path.split('.').reduce((o, k) => o[k], settings);
-const setOpt = (path, v) => { const ks = path.split('.'), last = ks.pop(); ks.reduce((o, k) => o[k], settings)[last] = v; save(); applySettings(path); refreshUI(); if (inMenu && ['mode', 'q.level', 'm.level', 'm.mode'].includes(path)) showLevel(menuLevel()); };
+const setOpt = (path, v) => { const ks = path.split('.'), last = ks.pop(); ks.reduce((o, k) => o[k], settings)[last] = v; save(); applySettings(path); refreshUI(); if (path.startsWith('look.')) showCrew(path === 'look.d' ? settings.look[v] : v); if (inMenu && ['mode', 'q.level', 'm.level', 'm.mode'].includes(path)) showLevel(menuLevel()); };
 
 // ---------------------------------------------------------------- engine + world
 const engine = new Engine($('#c'), settings.quality);
@@ -115,11 +121,19 @@ function refreshUI() {
   if (crowded) $('#summary').insertAdjacentHTML('beforeend', `<span class="warn">Crowded · ${lvl.name} plays best with ${rec.min}–${rec.max} players</span>`);
 }
 const menuMsg = (text, info = false) => { const el = $('#menuMsg'); el.textContent = text || ''; el.classList.toggle('info', info); };
+// the Crew drawer: one soldier on a turntable, wearing the crew last picked
+let crewView = null, crewShown = null;
+function showCrew(id) {
+  crewShown = id; crewView ||= chars.preview($('#crewCanvas')); crewView.show(id);
+  const c = CREWS[id]; $('#crewName').textContent = c.name; $('#crewSide').textContent = c.side === 1 ? 'BLUE side' : 'RED side'; $('#crewBlurb').textContent = c.blurb;
+}
 function openDrawer(id) {
   for (const d of document.querySelectorAll('.drawer')) d.classList.toggle('open', d.id === 'drawer-' + id && !d.classList.contains('open'));
+  if ($('#drawer-crew').classList.contains('open') && !crewShown) showCrew(settings.look[settings.look.d === 'r' ? 'r' : 'b']);
   $('#menu').classList.toggle('drawer-open', !!document.querySelector('.drawer.open'));
 }
 for (const el of document.querySelectorAll('.levels')) el.innerHTML = Object.values(LEVELS).map((l) => `<button data-v="${l.id}">${l.name}</button>`).join('');
+for (const el of document.querySelectorAll('.crews')) el.innerHTML = crewsOf(+el.dataset.side).map((id) => `<button data-v="${id}">${CREWS[id].name}</button>`).join('');
 $('#brief').innerHTML = `<b>${camp.title}</b>${camp.stages.length} objectives · ${LEVELS[CAMPAIGN_LEVEL].name}`;
 document.addEventListener('click', (e) => {
   const b = e.target.closest('button');
@@ -147,14 +161,14 @@ async function play(makeTransport) {
     engine.canvas.requestPointerLock?.()?.catch?.(() => {});
   } catch (err) { toMenu(err.message || String(err)); }
 }
-const playLocal = (opts) => play(async () => new LocalTransport(opts, settings.name));
+const playLocal = (opts) => play(async () => new LocalTransport(opts, settings.name, lookString()));
 const startQuick = () => playLocal({ mode: settings.q.mode, level: settings.q.level, fill: settings.q.bots + 1, skill: settings.q.skill });
 const startCampaign = () => playLocal({ mode: 'campaign', level: CAMPAIGN_LEVEL, skill: settings.c.skill });
 const startMulti = () => { menuMsg('Connecting…', true); play(async () => {
   let host = settings.m.server.trim() || location.host;
   host = host.replace(/^(https?|wss?):\/\//, '').replace(/\/+$/, '');
   const proto = location.protocol === 'https:' && !settings.m.server.trim() ? 'wss' : 'ws';
-  const q = new URLSearchParams({ name: settings.name, room: settings.m.room || 'public', mode: settings.m.mode, fill: settings.m.fill, level: settings.m.level });
+  const q = new URLSearchParams({ name: settings.name, room: settings.m.room || 'public', mode: settings.m.mode, fill: settings.m.fill, level: settings.m.level, look: lookString() });
   const t = new WsTransport(`${proto}://${host}/ws?${q}`); await t.ready; return t;
 }); };
 $('#go').onclick = () => ({ quick: startQuick, campaign: startCampaign, multi: startMulti })[settings.mode]();
@@ -204,6 +218,7 @@ function loop() {
   const dt = Math.min(clock.getDelta(), 0.1);
   frames++; fpsT += dt; if (fpsT >= 0.5) { fps = Math.round(frames / fpsT); frames = 0; fpsT = 0; hud.netstat(`${fps} fps${game.net && !game.net.local ? ` · ${game.net.ping} ms` : ''} · ${engine.qualityName}${engine.dyn < 0.99 ? ` · ${Math.round(engine.dyn * 100)}% res` : ''}`); }
   if (inMenu && current) menuCamera(dt); else { engine.fade = 1; game.frame(dt); }
+  if (inMenu && crewView && $('#drawer-crew').classList.contains('open')) crewView.frame(dt);
   current?.built.update(engine.time);
   fx.update(dt, engine.camera);
   rain.update(dt, engine.camera);
@@ -215,7 +230,7 @@ function loop() {
 requestAnimationFrame(loop);
 
 // debugging / automated tests
-window.__irontide = { game, engine, settings, playLocal, toMenu, vm, chars, fx, rain, G };
+window.__irontide = { game, engine, settings, playLocal, toMenu, vm, chars, fx, rain, G, crews: CREWS };
 if (params.get('auto')) {
   const a = params.get('auto');
   if (a === 'campaign') startCampaign();

@@ -6,6 +6,7 @@ import { WEAPONS, WEAPON_ORDER, damageAt } from './weapons.js';
 import { levelColliders } from './props.js';
 import { LEVELS, DEFAULT_LEVEL } from './levels/index.js';
 import { botThink, botAlert, makeAI, BOT_NAMES } from './bots.js';
+import { crewFor } from './crews.js';
 
 export const MAX_PLAYERS = 64;      // the game's hard cap per match; levels advertise the size they suit (recommendedPlayers)
 export const TICK = 1 / 20;
@@ -37,10 +38,11 @@ export class GameSim {
   // ------------------------------------------------------------------ roster
   humans() { let n = 0; for (const e of this.ents.values()) if (!e.bot) n++; return n; }
   hostile(a, b) { return a.id !== b.id && (a.team === 0 || a.team !== b.team); }
-  info(e) { return { id: e.id, name: e.name, team: e.team, bot: e.bot, k: e.kills, d: e.deaths }; }
+  info(e) { return { id: e.id, name: e.name, team: e.team, crew: e.crew, bot: e.bot, k: e.kills, d: e.deaths }; }
 
-  newEnt(id, name, bot, team) {
-    const e = { id, name, bot, team, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0, pitch: 0, hp: 100, alive: false, flags: 0,
+  /** crew: what they wear (shared/crews.js): looks only. */
+  newEnt(id, name, bot, team, crew) {
+    const e = { id, name, bot, team, crew, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0, pitch: 0, hp: 100, alive: false, flags: 0,
       weapon: 'carbine', kills: 0, deaths: 0, respawnAt: 0, lastHurt: -99, lastFire: -99, shots: 0, grounded: true, use: false, ai: null, gone: 0 };
     this.ents.set(id, e);
     return e;
@@ -52,10 +54,11 @@ export class GameSim {
     for (const e of this.ents.values()) { if (e.team === 1) a++; else if (e.team === 2) b++; }
     return a <= b ? 1 : 2;
   }
-  addPlayer(id, name) {
+  /** look: the player's crew choices { 1: id, 2: id, 0: id } for BLUE, RED and a deathmatch (see crewFor). */
+  addPlayer(id, name, look) {
     if (this.humans() >= MAX_PLAYERS) return false;
     this.balanceBots(1);
-    const e = this.newEnt(id, String(name || 'Player').slice(0, 16), false, this.pickTeam());
+    const team = this.pickTeam(), e = this.newEnt(id, String(name || 'Player').slice(0, 16), false, team, crewFor(team, look));
     this.out.send(id, {
       t: 'hi', id, level: this.level.id, mode: this.mode, opts: this.opts,
       ents: [...this.ents.values()].map((x) => this.info(x)),
@@ -84,7 +87,7 @@ export class GameSim {
   addBot(o = {}) {
     const used = new Set([...this.ents.values()].map((e) => e.name));
     const name = BOT_NAMES.find((n) => !used.has(n)) || 'Bot' + this.nextBotId;
-    const e = this.newEnt(this.nextBotId++, name, true, o.team ?? this.pickTeam());
+    const team = o.team ?? this.pickTeam(), e = this.newEnt(this.nextBotId++, name, true, team, crewFor(team));
     e.ai = makeAI(o.skill || this.opts.skill, o.mode || 'roam', o.post || null);
     const r = Math.random();
     e.weapon = o.weapon || (r < 0.42 ? 'carbine' : r < 0.64 ? 'smg' : r < 0.76 ? 'shotgun' : r < 0.9 ? 'marksman' : 'pistol');

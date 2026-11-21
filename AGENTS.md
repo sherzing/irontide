@@ -63,6 +63,9 @@ A change is finished when every check its files touch is **green**.
   browser, with `npx vite --port 5177`: `node scripts/aim-lab.mjs volumes out.jpg` paints what a shot hits over
   the soldier, `sights out.png` shows each sight against the screen's centre, `lag` measures a shot trailing a
   turning view (0 is right).
+- **Crews** (`shared/crews.js`) are looks only: the body texture repainted and kit hung on bones
+  (`client/src/crewkit.js`). `node scripts/crew-sheet.mjs out.jpg` shows them all, front and back. BLUE's crews
+  stay cold-coloured and RED's warm: that is how a team is told apart.
 - **Deaths** are a ragdoll (`client/src/ragdoll.js`): particles on the joints, which the skeleton follows. Judge a
   change on the bench: `npx vite --port 5177`, then `node scripts/death-strip.mjs out.jpg` films one death
   (`from=180 move=5 head=1 at=wall` and more, listed at the top of the script) and

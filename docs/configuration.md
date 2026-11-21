@@ -58,6 +58,7 @@ Menu → Settings. Stored in the browser's local storage under the key `irontide
 | Aim with the right mouse button (`aim`) | `toggle` (click on, click off), `hold` | `toggle` |
 | Field of view (`fov`) | 60–100 | 78 |
 | Volume (`volume`) | 0–100 | 80 |
+| Crew (`look`), in the menu's Crew drawer | one crew for BLUE (`b`), one for RED (`r`), and which of the two is worn in a deathmatch (`d`) | Harbour Watch, Wreckers, the BLUE one |
 | Quick match (`q`) | game type, level, bots 1–63, bot skill | deathmatch, 9 bots, Regular |
 | Campaign (`c`) | difficulty | Regular |
 | Multiplayer (`m`) | server, room, mode, level, fill 0–64 | this host, `public`, team deathmatch, Drydock, 12 |
@@ -88,6 +89,7 @@ restart the server.
 | What a player's shot can hit on a soldier | `HIT`, `HEAD` and `HEAD_R` in `client/src/characters.js` |
 | What a bot's shot can hit | `hitCharacter` in `shared/collision.js` |
 | Which shots the server refuses: rate, range, line of sight, and how far it trusts the client's own account | `humanFire` in `shared/sim.js` |
+| Crews: names, sides, colours, kit | `CREWS` in `shared/crews.js`; the shape of each kit item in `KIT` in `client/src/crewkit.js` |
 | Which weapons exist and their number keys | `WEAPON_ORDER` in `shared/weapons.js` |
 | How a weapon is held, aimed and reloaded on screen | `DEFS` in `client/src/viewmodel.js` |
 | How hard a weapon shoves the body it kills | `SHOVE` in `client/src/ragdoll.js` |

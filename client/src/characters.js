@@ -7,8 +7,9 @@ import { loadModel } from './levelbuild.js';
 import { canvasTex } from './materials.js';
 import { Ragdoll, SHOVE } from './ragdoll.js';
 import { raySphere, rayCapsule, CROUCH_SCALE } from '../../shared/collision.js';
+import { CREWS } from '../../shared/crews.js';
+import { repaint, kitFor, hang } from './crewkit.js';
 
-const TEAM_TINT = [new THREE.Color(0.95, 0.9, 0.8), new THREE.Color(0.62, 0.82, 1.3), new THREE.Color(1.35, 0.7, 0.6)];
 const TEAM_CSS = ['#e8e2d0', '#7fb8ff', '#ff8a70'];
 const _view = new THREE.Matrix4(), _frustum = new THREE.Frustum(), _sphere = new THREE.Sphere(new THREE.Vector3(), 3);
 /**
@@ -52,10 +53,10 @@ class Body {
     this.owner = owner;
     this.root = new THREE.Group(); this.loose = new THREE.Group();      // loose: what has left the body (the dropped rifle), in world space
     const model = skeletonClone(owner.src.scene), bones = this.bones = {};
-    this.skin = []; this.meshes = [];
+    this.skin = []; this.visors = []; this.meshes = []; this.kit = []; this.crew = null;
     model.traverse((o) => {
       if (o.isMesh) {
-        o.castShadow = true; o.receiveShadow = true; if (o.material.name === 'VanguardBodyMat') this.skin.push(o);
+        o.castShadow = true; o.receiveShadow = true; if (o.material.name === 'VanguardBodyMat') this.skin.push(o); else this.visors.push(o);
         const b = owner.bounds.get(o.name); o.frustumCulled = !!b; if (b) { o.boundingSphere = b.clone(); this.meshes.push(o); }      // skinned meshes need their bounds given (see load)
       }
       if (o.isBone) bones[o.name.replace('mixamorig', '')] = o;
@@ -68,9 +69,12 @@ class Body {
     this.pose0 = Object.values(bones).map((b) => [b, b.position.clone(), b.quaternion.clone()]);
     this.rag = new Ragdoll(bones, this.gun);
   }
-  /** Made ready for a living soldier of this team. */
-  wear(team) {
-    for (const m of this.skin) m.material = this.owner.bodyMats[team || 0];
+  /** Made ready for a living soldier of this team, in this crew's colours and kit. */
+  wear(team, crew) {
+    const look = this.owner.look(crew, team);
+    for (const m of this.skin) m.material = look.body;
+    for (const m of this.visors) m.material = look.visor;
+    if (this.crew !== look.id) { for (const k of this.kit) k.removeFromParent(); this.kit = look.kit.map(([bone, geo]) => hang(this.bones[bone], geo)); this.crew = look.id; }
     for (const m of this.meshes) m.boundingSphere.radius = this.owner.reach;
     for (const [b, p, q] of this.pose0) { b.position.copy(p); b.quaternion.copy(q); }
     const g = this.gun; this.bones.RightHand.add(g); g.scale.setScalar(100); g.position.set(-2, 9, 3); g.rotation.set(1.45, 0.1, -1.5);
@@ -107,7 +111,7 @@ class Body {
 class Char {
   constructor(owner, info) {
     this.id = info.id; this.info = info; this.owner = owner;
-    this.body = owner.takeBody(info.team);
+    this.body = owner.takeBody(info.team, info.crew);
     // name tag
     const tex = canvasTex(256, (g) => { g.clearRect(0, 0, 256, 256); g.font = '600 34px system-ui, sans-serif'; g.textAlign = 'center'; g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillText(info.name, 129, 141); g.fillStyle = TEAM_CSS[info.team || 0]; g.fillText(info.name, 128, 140); });
     this.tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: false }));
@@ -122,7 +126,7 @@ class Char {
     const alive = !!s[9];
     if (alive && !this.alive) {                                         // back in: the body it died in stays where it fell
       this.buf.length = 0; this.buf.push({ t, x: s[1], y: s[2], z: s[3], yaw: s[4], pitch: s[5], flags: s[6] }); this.placed = false;
-      if (this.body.dead) { this.owner.leave(this.body); this.body = this.owner.takeBody(this.info.team); }
+      if (this.body.dead) { this.owner.leave(this.body); this.body = this.owner.takeBody(this.info.team, this.info.crew); }
     }
     if (!alive && this.alive) this.die();
     this.alive = alive;
@@ -206,11 +210,43 @@ export class Characters {
     if (sphere) { sphere.radius *= 1.5; this.src.scene.traverse((o) => { if (o.isSkinnedMesh) this.bounds.set(o.name, sphere); }); }
     this.reach = sphere ? sphere.radius : 0;
     this.gun = gunParts();
-    let body = null;
-    this.src.scene.traverse((o) => { if (o.isMesh && o.material.name === 'VanguardBodyMat') body = o.material; });
-    this.bodyMats = TEAM_TINT.map((c) => { const m = body.clone(); m.name = 'VanguardBodyMat'; m.color.copy(c); return m; });
+    this.looks = new Map();
+    this.src.scene.traverse((o) => { if (o.isMesh) this[o.material.name === 'VanguardBodyMat' ? 'bodyMat' : 'visorMat'] = o.material; });
   }
-  takeBody(team) { const b = this.spare.pop() || new Body(this); b.wear(team); return b; }
+  /** A crew's materials and kit, made the first time someone wears it. An id this build does not know gets the side's first crew. */
+  look(id, team) {
+    if (!CREWS[id]) id = team === 2 ? 'wreckers' : 'watch';
+    let L = this.looks.get(id);
+    if (L) return L;
+    const crew = CREWS[id], src = this.bodyMat.map, map = new THREE.CanvasTexture(repaint(src.image, crew));
+    map.flipY = src.flipY; map.colorSpace = src.colorSpace; map.wrapS = src.wrapS; map.wrapT = src.wrapT; map.channel = src.channel; map.anisotropy = 4;
+    const body = this.bodyMat.clone(); body.name = 'VanguardBodyMat'; body.map = map;
+    const visor = this.visorMat.clone(); visor.map = null; visor.color.set(crew.visor).multiplyScalar(0.55); visor.emissive.set(crew.visor); visor.emissiveIntensity = 0.35; visor.roughness = 0.25; visor.metalness = 0.6;
+    this.looks.set(id, L = { id, body, visor, kit: kitFor(crew) });
+    return L;
+  }
+  /**
+   * A soldier on a turntable for the menu, drawn into `canvas` by a renderer of its own.
+   * show(crew) dresses him, frame(dt) turns and draws him, face(a) sets the angle (0 = facing the viewer).
+   */
+  preview(canvas) {
+    const r = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
+    r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.15;
+    const scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(24, 1, 0.1, 30), body = new Body(this);
+    scene.add(new THREE.HemisphereLight(0xe8f0f8, 0x565c66, 2.4));
+    for (const [c, k, x, y, z] of [[0xfff2e0, 3.4, 2.5, 3.5, 4], [0x9fc6ff, 2.4, -3, 2.5, -3.5]]) { const l = new THREE.DirectionalLight(c, k); l.position.set(x, y, z); scene.add(l); }
+    cam.position.set(0, 1.05, 5.0); cam.lookAt(0, 0.93, 0);
+    let turn = 0.45, w = 0, h = 0;
+    return {
+      show: (crew) => { body.wear(CREWS[crew]?.side, crew); scene.add(body.root); body.root.visible = true; },
+      face: (a) => { turn = a; },
+      frame: (dt, spin = 0.6) => {
+        if (canvas.clientWidth && (canvas.clientWidth !== w || canvas.clientHeight !== h)) { w = canvas.clientWidth; h = canvas.clientHeight; r.setPixelRatio(Math.min(devicePixelRatio, 2)); r.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); }
+        turn += dt * spin; body.root.rotation.y = turn + Math.PI; body.mixer.update(dt); r.render(scene, cam);      // the model looks along -z: turned round, he faces the camera
+      },
+    };
+  }
+  takeBody(team, crew) { const b = this.spare.pop() || new Body(this); b.wear(team, crew); return b; }
   store(body) { body.stow(); this.spare.push(body); }
   /** A dead body its soldier has moved on from. It lies for LINGER seconds; only the newest MAX_LYING stay, older ones sink away at once. */
   leave(body) {

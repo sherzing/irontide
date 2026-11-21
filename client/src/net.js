@@ -1,16 +1,18 @@
 // Transports. Both expose: send(msg), onMessage, update(dt), close(), local(bool), ping.
 import { GameSim, TICK } from '../../shared/sim.js';
+import { parseLook } from '../../shared/crews.js';
 
 /** Runs the authoritative sim in-process (quick game with bots, campaign). */
 export class LocalTransport {
-  constructor(opts, name) {
+  /** look: the player's crew choices, "blue,red,deathmatch" (shared/crews.js). */
+  constructor(opts, name, look) {
     this.local = true; this.ping = 0; this.onMessage = () => {}; this.onClose = () => {};
     this.queue = []; this.acc = 0; this.id = 1; this.paused = false;
     this.sim = new GameSim(opts, {
       send: (id, m) => { if (id === this.id) this.queue.push(m); },
       broadcast: (m, except) => { if (except !== this.id) this.queue.push(m); },
     });
-    this.sim.addPlayer(this.id, name);
+    this.sim.addPlayer(this.id, name, parseLook(look));
   }
   send(m) { this.sim.handle(this.id, m); }
   update(dt) {

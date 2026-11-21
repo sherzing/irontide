@@ -58,6 +58,7 @@
     <p class="pitch" id="pitch"></p>
     <div class="actions">
       <button class="go" id="go"><span id="goLabel">Drop in</span><svg viewBox="0 0 26 14" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M0 7h23M17 1l6 6-6 6"/></svg></button>
+      <button class="ghost" data-drawer="crew">Crew</button>
       <button class="ghost" data-drawer="settings">Settings</button>
       <button class="ghost" data-drawer="controls">Controls</button>
     </div>
@@ -111,6 +112,17 @@
     <div class="row"><label>Field of view</label><div class="rng"><input type="range" min="60" max="100" data-opt="fov"><span class="val" data-val="fov"></span></div></div>
     <div class="row"><label>Volume</label><div class="rng"><input type="range" min="0" max="100" data-opt="volume"><span class="val" data-val="volume"></span></div></div>
     <p class="note">Graphics presets change resolution, shadows, ambient occlusion and anti-aliasing. If the frame rate is low, step down one preset.</p>
+  </aside>
+
+  <aside class="drawer" id="drawer-crew">
+    <button class="x" data-close aria-label="Close">×</button>
+    <h2>CREW</h2>
+    <div class="sub lbl">What you wear · saved in this browser</div>
+    <div class="crewview"><canvas id="crewCanvas"></canvas><div><b id="crewName"></b><span class="lbl" id="crewSide"></span><p id="crewBlurb"></p></div></div>
+    <div class="row"><label>On BLUE</label><div class="seg crews" data-opt="look.b" data-side="1"></div></div>
+    <div class="row"><label>On RED</label><div class="seg crews" data-opt="look.r" data-side="2"></div></div>
+    <div class="row"><label>In a deathmatch</label><div class="seg" data-opt="look.d"><button data-v="b">My BLUE crew</button><button data-v="r">My RED crew</button></div></div>
+    <p class="note">A crew is looks only: same body, same speed, same hit volumes. Other players see the crew you chose for the side you are on. Bots are dealt crews of their own side.</p>
   </aside>
 
   <aside class="drawer" id="drawer-controls">

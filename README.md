@@ -22,6 +22,10 @@ Five weapons, all carried at once and picked with the number keys:
 | 4 | Kestrel .338 | bolt-action sniper rifle with a scope, 5 rounds |
 | 5 | P-9 Service | pistol, 15 rounds |
 
+Eight crews decide what a soldier wears, four for each side: Harbour Watch, Cutter Crew, Clearance Divers and Bar Pilots on
+BLUE; Wreckers, Night Shift, Dead Freight and Low Tide Runners on RED. A player picks one for each side under **Crew** in
+the menu; bots are dealt crews of their side. A crew is looks only (`shared/crews.js`).
+
 ## Run
 
 ```bash
@@ -47,12 +51,12 @@ Every setting and where it lives: [docs/configuration.md](docs/configuration.md)
 
 | Path | What |
 | --- | --- |
-| `shared/` | Engine-agnostic game core used by both browser and server: collision, navigation grid, weapons and what a shot does (`weapons.js`), bot AI, the authoritative `GameSim`, level data |
+| `shared/` | Engine-agnostic game core used by both browser and server: collision, navigation grid, weapons and what a shot does (`weapons.js`), bot AI, crews (`crews.js`), the authoritative `GameSim`, level data |
 | `shared/levels/` | Levels as plain data (`drydock.js`, `breakers.js`, `crosswind.js`), authoring helpers (`kit.js`), registry (`index.js`) |
-| `client/src/` | Renderer + post chain (`engine.js`), level builder (`levelbuild.js`), instanced containers (`containers.js`), scenery builders (`dressing.js`, `dressing-yard.js`, `dressing-airfield.js`), surface shaders (`materials.js`), rain (`rain.js`), FX, first-person weapons (`viewmodel.js`, `vmkit.js`, `vmparts.js` and one file per gun: `vmcarbine.js`, `vmsmg.js`, `vmshotgun.js`, `vmsniper.js`, `vmpistol.js`), soldiers (`characters.js`) and how they fall when killed (`ragdoll.js`), HUD (`hud.js`, `ui.css`), session (`game.js`), transports (`net.js`) |
+| `client/src/` | Renderer + post chain (`engine.js`), level builder (`levelbuild.js`), instanced containers (`containers.js`), scenery builders (`dressing.js`, `dressing-yard.js`, `dressing-airfield.js`), surface shaders (`materials.js`), rain (`rain.js`), FX, first-person weapons (`viewmodel.js`, `vmkit.js`, `vmparts.js` and one file per gun: `vmcarbine.js`, `vmsmg.js`, `vmshotgun.js`, `vmsniper.js`, `vmpistol.js`), soldiers (`characters.js`), what each crew wears (`crewkit.js`) and how they fall when killed (`ragdoll.js`), HUD (`hud.js`, `ui.css`), session (`game.js`), transports (`net.js`) |
 | `server/index.js` | Static file server + WebSocket rooms, one `GameSim` per room |
 | `install.sh`, `scripts/package.mjs` | The installer for a packaged release, and the script that packs one into `release/` |
-| `scripts/` | Asset fetcher, headless sim test (`sim-test.mjs`), server protocol test (`net-test.mjs`), the model of what the weapons do (`ballistics.mjs`), Playwright screenshot/playtest tools and benches (`aim-lab.mjs`, `death-strip.mjs`, `vm-lab.mjs`) |
+| `scripts/` | Asset fetcher, headless sim test (`sim-test.mjs`), server protocol test (`net-test.mjs`), the model of what the weapons do (`ballistics.mjs`), Playwright screenshot/playtest tools and benches (`aim-lab.mjs`, `crew-sheet.mjs`, `death-strip.mjs`, `vm-lab.mjs`) |
 
 Solo modes run the very same `GameSim` in-process (`LocalTransport`), so quick match, campaign and multiplayer share one code path.
 

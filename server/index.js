@@ -11,6 +11,7 @@ import { WebSocketServer } from 'ws';
 import { GameSim, TICK, MAX_PLAYERS } from '../shared/sim.js';
 import { LEVELS, DEFAULT_LEVEL, recommendedPlayers } from '../shared/levels/index.js';
 import { SKILLS } from '../shared/bots.js';
+import { parseLook } from '../shared/crews.js';
 
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : process.env[k.toUpperCase()] ?? d; };
 const PORT = +arg('port', 8787);
@@ -75,7 +76,7 @@ wss.on('connection', (ws, req) => {
   if (room.clients.size >= MAX_PLAYERS) { ws.send(JSON.stringify({ t: 'full' })); return ws.close(1013, `Server is full (${MAX_PLAYERS} players)`); }
   const id = nextId++;
   room.clients.set(id, ws);
-  room.sim.addPlayer(id, (q.get('name') || 'Player').replace(/[^\w \-.]/g, '').slice(0, 16) || 'Player');
+  room.sim.addPlayer(id, (q.get('name') || 'Player').replace(/[^\w \-.]/g, '').slice(0, 16) || 'Player', parseLook(q.get('look')));
   console.log(`[room ${roomName}] + ${id} (${room.clients.size}/${MAX_PLAYERS})`);
   let budget = 120; ws.alive = true;
   const refill = setInterval(() => { budget = 120; }, 1000);
