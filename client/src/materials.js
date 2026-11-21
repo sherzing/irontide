@@ -67,6 +67,10 @@ export const MATS = {
   hull: { id: 'rusty_metal_sheet', tile: 3.4, dark: 0.85 },                            // ship plating: grey paint going to rust
   antifoul: { id: 'rusty_painted_metal', tile: 3.2, dark: 0.85 },                      // red bottom paint with rust runs
   cladding: { id: 'box_profile_metal_sheet', tile: 2.4, gray: true, env: 0.7, dark: 0.85 },   // profiled steel sheet, tinted per box
+  cobbles: { id: 'cobblestone_05', tile: 1.7, ground: true, soft: true, planar: true, dark: 0.6 },        // granite setts: streets and quays of an old harbour quarter
+  limewash: { id: 'painted_plaster_wall', tile: 3.2, gray: true, dark: 0.72 },                 // lime-washed render, tinted per box
+  slate: { id: 'grey_roof_tiles_02', tile: 2.0, dark: 0.8 },                                   // roof slates
+  timber: { id: 'wood_planks_grey', tile: 2.2, gain: 2.6, dark: 0.6 },                         // sawn boards in daylight, tinted per box (the planks of `wood` are near black when tinted)
 };
 
 export const NOISE = /* glsl */`
@@ -182,6 +186,7 @@ export async function getMaterial(key) {
       roughness: 1, metalness: 1, color: def.color ?? 0xffffff, vertexColors: true, envMapIntensity: def.env ?? 1,
     });
     m.userData.tile = def.tile;
+    if (def.gain) m.color.multiplyScalar(def.gain);
     if (def.metal != null) m.metalness = def.metal;
     patchSurface(m, { ground: !!def.ground, soft: !!def.soft, planar: !!def.planar, dark: def.dark ?? 1, rough: def.rough });
     return m;

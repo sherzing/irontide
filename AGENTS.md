@@ -46,6 +46,13 @@ A change is finished when every check its files touch is **green**.
   `dressing` is looks only: what a player can touch is a solid, so a scenery builder and its colliders are written
   as a pair (see `cargoPlane` in `shared/levels/crosswind.js`, and `openLeaves` in `shared/props.js`, which gives an
   open container's door leaves to both the picture and the colliders).
+- **Streets.** Ropewalk is written house by house (`house(...)` in `shared/levels/ropewalk.js`); roofs, and the
+  windows and doors of every face open to a street, are derived from that list. A solid that stands against a house
+  goes into `houses` or `covers`, or the house draws windows into it. `node scripts/level-lines.mjs ropewalk` prints
+  whether one base sees the other (0 lines is right: a boat, containers and the bobbin racks are placed to keep it
+  so) and how far each side walks to the middle of each lane (equal is right).
+- **Timber.** A tint multiplies a texture, and the planks of `wood` are dark: tinted, or in shade on a dry level,
+  they go black. Use `timber` (the same planks, lighter) with a pale tint, and `matte` for painted joinery.
 - **Ground** is flat tiles that meet edge to edge. Overlapping floors flicker at a distance, and bots walk only at
   `groundY`.
 - **`dress(type, {...})`** overwrites `type` with an option of that name; scenery options use `kind`.

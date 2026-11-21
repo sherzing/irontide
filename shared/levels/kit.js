@@ -76,4 +76,5 @@ export const SURF = {
   brick: 'concrete', gravel: 'dirt', corrugated: 'metal', rust: 'metal', plate: 'metal', steel: 'metal', grid: 'metal',
   wood: 'wood', container: 'metal', pavement: 'concrete',
   sand: 'dirt', wetsand: 'dirt', grass: 'dirt', runway: 'concrete', hangarfloor: 'concrete', apron: 'concrete', plaster: 'concrete', hull: 'metal', antifoul: 'metal', cladding: 'metal',
+  cobbles: 'concrete', limewash: 'concrete', slate: 'concrete', timber: 'wood',
 };

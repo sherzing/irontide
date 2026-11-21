@@ -12,7 +12,7 @@ Set when the server starts. A command-line flag wins over the environment variab
 | `--mode` | `MODE` | `tdm` | Mode of a new room when the first player does not ask for one: `dm`, `tdm` or `campaign` |
 | `--fill` | `FILL` | `12` | Player count that bots fill a new room up to, 0–64, when the first player does not ask for one |
 | `--skill` | `SKILL` | `normal` | Bot skill in every multiplayer room: `easy`, `normal` or `hard`. Players cannot change it per room |
-| `--level` | `LEVEL` | `drydock` | Level of a new room when the first player does not ask for one: `drydock`, `breakers` or `crosswind` |
+| `--level` | `LEVEL` | `drydock` | Level of a new room when the first player does not ask for one: `drydock`, `breakers`, `crosswind` or `ropewalk` |
 
 ```bash
 node server/index.js --port 9000 --mode dm --fill 24 --skill hard
@@ -42,7 +42,7 @@ the WebSocket address `/ws`. Later joiners' values are ignored.
 | `name` | Callsign | Player name, up to 16 characters |
 | `mode` | If new | `dm`, `tdm` or `campaign` (co-op) |
 | `fill` | Fill to | Players that bots fill the room up to, 0–64 |
-| `level` | Level | Level id: `drydock`, `breakers` or `crosswind`. A co-op room always plays Drydock, the level with the mission |
+| `level` | Level | Level id: `drydock`, `breakers`, `crosswind` or `ropewalk`. A co-op room always plays Drydock, the level with the mission |
 
 ## 3. Player
 
@@ -104,6 +104,8 @@ restart the server.
 | How far the sun's shadows reach on a wide level | `SHADOW_FIT` and `SHADOW_RANGE` in `client/src/engine.js`; `env.shadowRange` for one level |
 | How direct the bots' routes are | `weight` in `shared/nav.js` |
 | A level's layout, spawn points, pickups, campaign | `shared/levels/<id>.js`; format in the README, "Adding a level" |
+| Ropewalk's houses: footprint, height, colour, which have a room to walk into | the `house(...)` calls in `shared/levels/ropewalk.js`; the colours in `WASH` and `PAINT` there |
+| What a house, a warehouse or a boarded shed shows the street | `B.facade` in `client/src/dressing-town.js` |
 | Which level is the default | `DEFAULT_LEVEL` in `shared/levels/index.js` |
 | Graphics quality presets | `QUALITY` in `client/src/engine.js` |
 | Textures and models to download | lists at the top of `scripts/fetch-assets.mjs` |

@@ -26,8 +26,8 @@ Measured load of one room (simulated players on the same machine as the server, 
 
 The lower figures are players standing still, the higher ones a room full of fighting bots; real matches fall in
 between. Traffic grows with the square of the room size, because every player is sent every other player's state
-20 times a second. The level makes little difference to the server: 64 bots cost 0.2 ms of each 50 ms tick on any of
-the three. None of this has been measured over the internet, or on a small rented server.
+20 times a second. The level makes little difference to the server: 64 bots cost 0.2 to 0.4 ms of each 50 ms tick on any of
+the four. None of this has been measured over the internet, or on a small rented server.
 
 ### Players
 
@@ -35,9 +35,10 @@ the three. None of this has been measured over the internet, or on a small rente
 - Keyboard and mouse. There are no touch or gamepad controls, so phones and tablets do not work.
 - Any graphics chip of the last several years. Measured on Intel UHD integrated graphics at 1600×900, in frames per
   second on Low / Medium / High: Drydock with 10 players 60 / 45 / 25, Breakers with 32 players 60 / 58 / 44, Crosswind
-  with 64 players 58 / 51 / 38. Dynamic resolution, on by default, lowers the render resolution to hold the frame rate.
-- The first visit downloads 106 MB for Drydock; Breakers adds 59 MB and Crosswind 64 MB when a player first loads
-  them (229 MB for all three). The browser keeps the files for a day.
+  with 64 players 58 / 51 / 38, Ropewalk with 24 players 60 / 47 / 32. Dynamic resolution, on by default, lowers the render resolution to hold the frame rate.
+- The first visit downloads 106 MB for Drydock; Breakers adds 59 MB, Crosswind 64 MB and Ropewalk 31 MB when a player
+  first loads them in that order (260 MB for all four; Ropewalk straight after Drydock adds 77 MB, because it shares
+  its sky with Breakers). The browser keeps the files for a day.
 
 ## Install
 
@@ -77,7 +78,7 @@ To host changed code, build your own release from a source checkout:
 A room is created by the first player who joins it; that player's mode, level and fill settings apply to the room. Bots
 hold the empty slots up to the fill number. A room closes when its last player leaves, and its scores go with it.
 
-Each level states the match size it suits: Drydock 8–24 players, Breakers 12–32, Crosswind 24–64. The game allows up to
+Each level states the match size it suits: Drydock 8–24 players, Breakers 12–32, Crosswind 24–64, Ropewalk 8–24. The game allows up to
 64 in a room on any of them; the menu warns above the level's range.
 
 ## HTTPS (optional)

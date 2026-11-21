@@ -13,6 +13,7 @@ export const TEXTURES = [
   'red_brick_03', 'concrete_pavement_02', 'painted_concrete', 'rusty_metal_grid', 'gravel_concrete_03',
   'coast_sand_01', 'damp_beach_sand', 'rusty_metal_sheet', 'rusty_painted_metal',                       // Breakers
   'aerial_asphalt_01', 'hangar_concrete_floor', 'sparse_grass', 'box_profile_metal_sheet',               // Crosswind
+  'cobblestone_05', 'painted_plaster_wall', 'grey_roof_tiles_02',                                        // Ropewalk
 ];
 export const MODELS = [
   'Barrel_01', 'barrel_03', 'wooden_crate_02', 'old_military_crate', 'wooden_military_crate',

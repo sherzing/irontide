@@ -1,7 +1,8 @@
 // Scenery builders: procedural set dressing a level asks for by name in its `dressing` list
 // (see shared/levels/kit.js `dress`). Purely visual — collision always comes from the level's solids.
 //   gantry · stsCrane · ship · lightMast · stacks · sign · skyline · breakwater · cones · pallets · bollards
-//   fenders · razorWire · rope · rails — plus the shipbreaking-yard set (dressing-yard.js) and the airfield set (dressing-airfield.js)
+//   fenders · razorWire · rope · cables · shedTrim — plus the shipbreaking-yard set (dressing-yard.js), the airfield set
+//   (dressing-airfield.js) and the harbour-quarter set (dressing-town.js)
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
@@ -9,6 +10,7 @@ import { getMaterial, canvasTex, patchSurface } from './materials.js';
 import { CONTAINER } from '../../shared/props.js';
 import { addYardBuilders } from './dressing-yard.js';
 import { addAirfieldBuilders } from './dressing-airfield.js';
+import { addTownBuilders } from './dressing-town.js';
 
 const V = (a) => new THREE.Vector3(a[0], a[1], a[2]);
 const UP = new THREE.Vector3(0, 1, 0);
@@ -452,14 +454,15 @@ B.cones = (k, o) => {
   }
 };
 
-/** Stacks of timber pallets. at: [[x, z, yawDeg, count], ...] */
+/** Stacks of timber pallets. at: [[x, z, yawDeg, count], ...]. mat: 'timber' for a dry level, where `wood` goes black. */
 B.pallets = (k, o) => {
+  const W = o.mat || 'wood';
   for (const [x, z, yawDeg = 0, n = 1] of o.at) {
     for (let i = 0; i < n; i++) {
       k.push(x + Math.sin(i * 7.1) * 0.03, (o.y || 0) + i * 0.146, z + Math.cos(i * 3.3) * 0.03, THREE.MathUtils.degToRad(yawDeg + Math.sin(i * 5.7) * 4));
       const c = ['#8b7355', '#7d684e', '#96805f'][i % 3];
-      for (let b = 0; b < 7; b++) k.box('wood', -0.555 + b * 0.185, 0.134, 0, 0.1, 0.022, 0.8, c);
-      for (const bz of [-0.36, 0, 0.36]) { k.box('wood', 0, 0.112, bz, 1.2, 0.022, 0.1, c); for (const bx of [-0.55, 0, 0.55]) k.box('wood', bx, 0.062, bz, 0.1, 0.08, 0.1, c); k.box('wood', 0, 0.011, bz, 1.2, 0.022, 0.1, c); }
+      for (let b = 0; b < 7; b++) k.box(W, -0.555 + b * 0.185, 0.134, 0, 0.1, 0.022, 0.8, c);
+      for (const bz of [-0.36, 0, 0.36]) { k.box(W, 0, 0.112, bz, 1.2, 0.022, 0.1, c); for (const bx of [-0.55, 0, 0.55]) k.box(W, bx, 0.062, bz, 0.1, 0.08, 0.1, c); k.box(W, 0, 0.011, bz, 1.2, 0.022, 0.1, c); }
       k.pop();
     }
   }
@@ -508,6 +511,7 @@ B.shedTrim = (k, o) => {
 
 addYardBuilders(B, { rng, PALETTE });
 addAirfieldBuilders(B, { rng, PALETTE });
+addTownBuilders(B, { rng, PALETTE });
 
 export async function buildDressing(items, root) {
   const k = new Kit();

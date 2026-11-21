@@ -1,12 +1,13 @@
 # IRONTIDE
 
-Browser first-person shooter (three.js / WebGL2). Three levels, a training range and four ways to play:
+Browser first-person shooter (three.js / WebGL2). Four levels, a training range and four ways to play:
 
 | Level | Size | Suits | Setting |
 | --- | --- | --- | --- |
 | **Drydock** | small, 68 × 75 m | 8–24 players | Harbour freight yard, rain clearing at golden hour, a feeder ship alongside |
 | **Breakers** | medium, 120 × 108 m | 12–32 players | Shipbreaking beach at noon: a freighter hauled up the tidal flat and half cut apart |
 | **Crosswind** | large, 240 × 232 m | 24–64 players | Coastal airfield on a cold clear morning: hangars, apron, a closed runway with a wreck on it |
+| **Ropewalk** | medium, 116 × 82 m | 8–24 players | Harbour quarter on a clear afternoon: streets and lanes between the fish quay and the goods yard, an 84 m rope shed, a market square |
 
 - **Training** – "Firing Line", a range that teaches the weapons in six steps and then stays open: every weapon, endless ammunition, targets that get back up, steel plates that show where the rounds land
 - **Quick match** – deathmatch or team deathmatch against 1–63 bots (three skill levels) on any level
@@ -40,7 +41,7 @@ npm run play        # builds the client and starts the server on http://localhos
 
 Development: `npm run dev` (Vite with hot reload + game server; Vite proxies `/ws` to port 8787).
 
-Server options: `node server/index.js --port 8787 --mode tdm|dm|campaign --fill 12 --skill easy|normal|hard --level drydock|breakers|crosswind`.
+Server options: `node server/index.js --port 8787 --mode tdm|dm|campaign --fill 12 --skill easy|normal|hard --level drydock|breakers|crosswind|ropewalk`.
 Other machines join by opening `http://<your-ip>:8787` (or entering `<your-ip>:8787` under Multiplayer → Server).
 `GET /status` lists the live rooms. The first player into a room decides its mode, level and bot fill.
 
@@ -53,11 +54,11 @@ Every setting and where it lives: [docs/configuration.md](docs/configuration.md)
 | Path | What |
 | --- | --- |
 | `shared/` | Engine-agnostic game core used by both browser and server: collision, navigation grid, weapons and what a shot does (`weapons.js`), bot AI, crews (`crews.js`), the authoritative `GameSim`, level data |
-| `shared/levels/` | Levels as plain data (`drydock.js`, `breakers.js`, `crosswind.js`, the training range `range.js`), authoring helpers (`kit.js`), registry (`index.js`) |
-| `client/src/` | Renderer + post chain (`engine.js`), level builder (`levelbuild.js`), instanced containers (`containers.js`), scenery builders (`dressing.js`, `dressing-yard.js`, `dressing-airfield.js`), surface shaders (`materials.js`), rain (`rain.js`), FX, first-person weapons (`viewmodel.js`, `vmkit.js`, `vmparts.js` and one file per gun: `vmcarbine.js`, `vmsmg.js`, `vmshotgun.js`, `vmsniper.js`, `vmpistol.js`), soldiers (`characters.js`), what each crew wears (`crewkit.js`) and how they fall when killed (`ragdoll.js`), HUD (`hud.js`, `ui.css`), session (`game.js`), transports (`net.js`) |
+| `shared/levels/` | Levels as plain data (`drydock.js`, `breakers.js`, `crosswind.js`, `ropewalk.js`, the training range `range.js`), authoring helpers (`kit.js`), registry (`index.js`) |
+| `client/src/` | Renderer + post chain (`engine.js`), level builder (`levelbuild.js`), instanced containers (`containers.js`), scenery builders (`dressing.js`, `dressing-yard.js`, `dressing-airfield.js`, `dressing-town.js`), surface shaders (`materials.js`), rain (`rain.js`), FX, first-person weapons (`viewmodel.js`, `vmkit.js`, `vmparts.js` and one file per gun: `vmcarbine.js`, `vmsmg.js`, `vmshotgun.js`, `vmsniper.js`, `vmpistol.js`), soldiers (`characters.js`), what each crew wears (`crewkit.js`) and how they fall when killed (`ragdoll.js`), HUD (`hud.js`, `ui.css`), session (`game.js`), transports (`net.js`) |
 | `server/index.js` | Static file server + WebSocket rooms, one `GameSim` per room |
 | `install.sh`, `scripts/package.mjs` | The installer for a packaged release, and the script that packs one into `release/` |
-| `scripts/` | Asset fetcher, headless sim test (`sim-test.mjs`), server protocol test (`net-test.mjs`), the model of what the weapons do (`ballistics.mjs`), Playwright screenshot/playtest tools and benches (`aim-lab.mjs`, `crew-sheet.mjs`, `death-strip.mjs`, `vm-lab.mjs`) |
+| `scripts/` | Asset fetcher, headless sim test (`sim-test.mjs`), server protocol test (`net-test.mjs`), the model of what the weapons do (`ballistics.mjs`), a level's sight lines and walking distances (`level-lines.mjs`), Playwright screenshot/playtest tools and benches (`aim-lab.mjs`, `crew-sheet.mjs`, `death-strip.mjs`, `vm-lab.mjs`) |
 
 Solo modes run the very same `GameSim` in-process (`LocalTransport`), so quick match, campaign and multiplayer share one code path.
 
@@ -90,6 +91,8 @@ travels with it. A dry level (`weather: { rain: 0, wet: 0 }`) skips the reflecti
    the level pickers (`shared/levels/range.js`).
 2. Register it in `shared/levels/index.js`.
 3. `node scripts/sim-test.mjs` checks it: open spawn points, a full match placed cleanly, bots that find each other.
+   `node scripts/level-lines.mjs <id>` reports what the layout does to a team match: whether the bases see each other,
+   the longest clear line, and how far each side walks to every pickup.
 
 The kit (`shared/levels/kit.js`) has `box`, `rbox`, `wall` (with door and window openings), `stairs`, `container`, `prop`,
 `decal`, `light`, `pickup`, `spawn(x, z, facing)` — facing is a compass bearing, 90 = east — and `frame(x, z, yaw)`,
@@ -100,8 +103,10 @@ Lay ground materials as tiles that meet edge to edge; two overlapping floors fli
 `dressing` is visual-only scenery placed with `dress(type, {...})` from the kit and built by `client/src/dressing.js`:
 `gantry`, `stsCrane`, `ship`, `lightMast`, `stacks`, `sign`, `skyline`, `breakwater`, `cones`, `pallets`, `bollards`,
 `fenders`, `razorWire`, `cables`, `shedTrim`; the shipbreaking set `hulk`, `bowBlock`, `plates`, `scrap`, `anchor`,
-`lifeboat`, `shelter`, `winch`, `crawlerCrane`, `mounds`; and the airfield set `hangar`, `aircraft`, `vehicle`, `tower`,
-`radome`, `latticeMast`, `fence`, `fuelTanks`, `windsock`, `sandbags`, `approach`, `treeline`, `ridge`, `taxiSign`.
+`lifeboat`, `shelter`, `winch`, `crawlerCrane`, `mounds`; the airfield set `hangar`, `aircraft`, `vehicle`, `tower`,
+`radome`, `latticeMast`, `fence`, `fuelTanks`, `windsock`, `sandbags`, `approach`, `treeline`, `ridge`, `taxiSign`; and the
+harbour-quarter set `roof`, `facade`, `arch`, `ropeworks`, `marketHall`, `pump`, `boat`, `gallery`, `netRack`, `iceStacks`,
+`rails`, `quay`, `coils`, `bales`, `casks`, `carts`, `stalls`.
 It never collides — give anything the player can touch a solid
 (`{ visible: false }` hides the collider when the dressing provides the look, as the gantry crane does).
 
@@ -109,6 +114,9 @@ It never collides — give anything the player can touch a solid
 the sun, density, height falloff), `shafts` (volumetric sun shafts and lamp glow), `weather: { rain, wet }`, `water`,
 `bloom` and `grade`. A dry, clear level is just `weather: { rain: 0, wet: 0 }` and a lower fog density.
 `shots` are the slow camera moves shown behind the menu.
+
+A street level is written house by house: `house(x0, z0, x1, z1, height, look, ridge)` in `shared/levels/ropewalk.js` makes the
+walls, and the roof and what each street face shows (windows, shutters, doors) follow from which faces are open to a street.
 
 Collision, the bot navigation grid, shadows and the menu's level picker are all derived from that data — nothing else to wire up.
 New textures/models: add their Poly Haven ids to `scripts/fetch-assets.mjs`, then to `MATS` in `client/src/materials.js` or `PROP_DEFS` in `shared/props.js`.
