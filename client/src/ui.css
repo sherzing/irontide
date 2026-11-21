@@ -196,6 +196,9 @@ h1.logo span { color: var(--acc); }
 #objective .p i { display: block; height: 100%; width: 0; background: var(--acc); box-shadow: 0 0 calc(var(--px) * 8) rgba(79, 216, 196, 0.8); transition: width 0.2s linear; }
 #objective .e { margin-top: calc(var(--px) * 8); min-height: calc(var(--px) * 15); font: 500 calc(var(--px) * 12) var(--f-mono); letter-spacing: 0.18em; text-transform: uppercase; color: rgba(242, 239, 232, 0.82); }
 #objective .e b { color: var(--ink); font-weight: 700; }
+#objective .tally { margin-top: calc(var(--px) * 6); font: 500 calc(var(--px) * 12) / 1.7 var(--f-mono); letter-spacing: 0.14em; text-transform: uppercase; color: rgba(242, 239, 232, 0.82); text-shadow: 0 0 2px #000, 0 0 5px rgba(0, 0, 0, 0.9), 0 1px 2px #000; }
+#objective .tally b { color: var(--acc-hi); font-weight: 700; }
+#objective .tally:empty { display: none; }
 
 #killfeed { position: absolute; right: calc(var(--px) * 28); top: calc(var(--px) * 24); display: flex; flex-direction: column; align-items: flex-end; gap: calc(var(--px) * 4); font: 600 calc(var(--px) * 17) var(--f-ui); letter-spacing: 0.04em; }
 #killfeed div { padding: calc(var(--px) * 3) calc(var(--px) * 10); background: rgba(6, 9, 11, 0.55); border-right: 2px solid transparent; animation: fadeout 6s forwards; }

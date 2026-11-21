@@ -15,6 +15,7 @@ import { parseLook } from '../shared/crews.js';
 
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : process.env[k.toUpperCase()] ?? d; };
 const PORT = +arg('port', 8787);
+const ROOM_LEVELS = Object.keys(LEVELS).filter((id) => !LEVELS[id].training);      // a training level is played alone, from the menu
 const DEFAULTS = { mode: arg('mode', 'tdm'), fill: +arg('fill', 12), skill: arg('skill', 'normal'), level: arg('level', DEFAULT_LEVEL) };
 const MODES = ['dm', 'tdm', 'campaign'];
 const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..');
@@ -29,7 +30,7 @@ const unusable = [
   !MODES.includes(DEFAULTS.mode) && `mode "${DEFAULTS.mode}" (${MODES.join(', ')})`,
   !(Number.isInteger(DEFAULTS.fill) && DEFAULTS.fill >= 0 && DEFAULTS.fill <= MAX_PLAYERS) && `fill "${arg('fill')}" (0-${MAX_PLAYERS})`,
   !Object.hasOwn(SKILLS, DEFAULTS.skill) && `skill "${DEFAULTS.skill}" (${Object.keys(SKILLS).join(', ')})`,
-  !Object.hasOwn(LEVELS, DEFAULTS.level) && `level "${DEFAULTS.level}" (${Object.keys(LEVELS).join(', ')})`,
+  !ROOM_LEVELS.includes(DEFAULTS.level) && `level "${DEFAULTS.level}" (${ROOM_LEVELS.join(', ')})`,
 ].filter(Boolean);
 if (unusable.length) { console.error(`Unusable setting: ${unusable.join('; ')}`); process.exit(CONFIG); }
 if (process.argv.includes('--check')) { console.log(`settings OK: port ${PORT}, mode ${DEFAULTS.mode}, fill ${DEFAULTS.fill}, skill ${DEFAULTS.skill}, level ${DEFAULTS.level}`); process.exit(0); }
@@ -56,7 +57,7 @@ function getRoom(name, q) {
   if (r) return r;
   const mode = MODES.includes(q.get('mode')) ? q.get('mode') : DEFAULTS.mode;
   const fill = Math.max(0, Math.min(MAX_PLAYERS, Number.isFinite(+q.get('fill')) && q.get('fill') !== null ? +q.get('fill') : DEFAULTS.fill));
-  const level = LEVELS[q.get('level')] ? q.get('level') : DEFAULTS.level;
+  const level = ROOM_LEVELS.includes(q.get('level')) ? q.get('level') : DEFAULTS.level;
   r = { name, clients: new Map() };
   r.sim = new GameSim({ mode, fill, skill: DEFAULTS.skill, level }, {
     send: (id, m) => { const ws = r.clients.get(id); if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); },

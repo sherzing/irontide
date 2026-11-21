@@ -13,8 +13,10 @@ export const CREWS = {
   nightshift: { side: 2, name: 'Night Shift', blurb: 'Dock gang. Signal orange, grey flashes, a hard-hat brim and lamp.', plate: '#f0701e', stripe: '#e8e8e2', cloth: '#3c3f44', suit: '#151515', visor: '#ffd590', kit: ['brim'] },
   deadfreight: { side: 2, name: 'Dead Freight', blurb: 'Smugglers. Oxblood plate, bone flashes, a scarf.', plate: '#822327', stripe: '#eae1ca', cloth: '#4c4c4f', suit: '#111113', visor: '#ff5040', kit: ['scarf'] },
   runners: { side: 2, name: 'Low Tide Runners', blurb: 'Beach crews. Sand plate, dark red flashes, a bedroll.', plate: '#ccb07c', stripe: '#8e211d', cloth: '#6e6c44', suit: '#1d1913', visor: '#ffe4a6', kit: ['roll', 'scarf'] },
+  // what stands on the range: nobody can choose it
+  target: { side: 0, hidden: true, name: 'Range target', blurb: '', plate: '#f4f1ea', stripe: '#d92a1c', cloth: '#d92a1c', suit: '#7d8389', visor: '#ffffff', kit: [] },
 };
-export const CREW_IDS = Object.keys(CREWS);
+export const CREW_IDS = Object.keys(CREWS).filter((id) => !CREWS[id].hidden);
 export const crewsOf = (side) => CREW_IDS.filter((id) => CREWS[id].side === side);
 /**
  * The crew a soldier wears on `team` (1 BLUE, 2 RED, 0 none: a deathmatch). want: their own choices { 1: id, 2: id, 0: id }.

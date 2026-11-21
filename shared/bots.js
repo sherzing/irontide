@@ -32,7 +32,19 @@ export function botAlert(e, from, now) {
   if (!ai.visible) { ai.lastSeen = { x: from.x, z: from.z }; ai.seenAt = now; ai.path = null; }
 }
 
+/** A practice target (mode 'target'): stands on its post, or walks between the post and post.to. It never looks for anyone. */
+function targetThink(e, dt) {
+  const ai = e.ai, p = ai.post, low = p.crouch ? 1 : 0;
+  if (!p.to) { e.vx = e.vz = 0; e.flags = low; return; }
+  const tx = ai.back ? p.x : p.to[0], tz = ai.back ? p.z : p.to[1], dx = tx - e.x, dz = tz - e.z, d = Math.hypot(dx, dz), sp = p.speed || 1.7;
+  if (d < 0.1) { ai.back = !ai.back; return; }
+  const step = Math.min(d, sp * dt);
+  e.x += (dx / d) * step; e.z += (dz / d) * step; e.vx = (dx / d) * sp; e.vz = (dz / d) * sp;
+  e.yaw = Math.atan2(-dx, -dz); e.flags = low | 2 | (sp > 3.8 ? 4 : 0);
+}
+
 export function botThink(sim, e, dt, now) {
+  if (e.ai.mode === 'target') return targetThink(e, dt);
   const ai = e.ai, sk = ai.skill, world = sim.world, nav = sim.nav;
   const w = WEAPONS[e.weapon];
   const eyeY = e.y + PLAYER.eye;

@@ -1,6 +1,6 @@
 # IRONTIDE
 
-Browser first-person shooter (three.js / WebGL2). Three levels and three ways to play:
+Browser first-person shooter (three.js / WebGL2). Three levels, a training range and four ways to play:
 
 | Level | Size | Suits | Setting |
 | --- | --- | --- | --- |
@@ -8,6 +8,7 @@ Browser first-person shooter (three.js / WebGL2). Three levels and three ways to
 | **Breakers** | medium, 120 × 108 m | 12–32 players | Shipbreaking beach at noon: a freighter hauled up the tidal flat and half cut apart |
 | **Crosswind** | large, 240 × 232 m | 24–64 players | Coastal airfield on a cold clear morning: hangars, apron, a closed runway with a wreck on it |
 
+- **Training** – "Firing Line", a range that teaches the weapons in six steps and then stays open: every weapon, endless ammunition, targets that get back up, steel plates that show where the rounds land
 - **Quick match** – deathmatch or team deathmatch against 1–63 bots (three skill levels) on any level
 - **Campaign** – "Low Tide", a six-objective mission on Drydock (also playable co-op via multiplayer)
 - **Multiplayer** – dedicated WebSocket server, rooms of up to **64 players**, bots fill empty slots; the first player picks the level
@@ -52,7 +53,7 @@ Every setting and where it lives: [docs/configuration.md](docs/configuration.md)
 | Path | What |
 | --- | --- |
 | `shared/` | Engine-agnostic game core used by both browser and server: collision, navigation grid, weapons and what a shot does (`weapons.js`), bot AI, crews (`crews.js`), the authoritative `GameSim`, level data |
-| `shared/levels/` | Levels as plain data (`drydock.js`, `breakers.js`, `crosswind.js`), authoring helpers (`kit.js`), registry (`index.js`) |
+| `shared/levels/` | Levels as plain data (`drydock.js`, `breakers.js`, `crosswind.js`, the training range `range.js`), authoring helpers (`kit.js`), registry (`index.js`) |
 | `client/src/` | Renderer + post chain (`engine.js`), level builder (`levelbuild.js`), instanced containers (`containers.js`), scenery builders (`dressing.js`, `dressing-yard.js`, `dressing-airfield.js`), surface shaders (`materials.js`), rain (`rain.js`), FX, first-person weapons (`viewmodel.js`, `vmkit.js`, `vmparts.js` and one file per gun: `vmcarbine.js`, `vmsmg.js`, `vmshotgun.js`, `vmsniper.js`, `vmpistol.js`), soldiers (`characters.js`), what each crew wears (`crewkit.js`) and how they fall when killed (`ragdoll.js`), HUD (`hud.js`, `ui.css`), session (`game.js`), transports (`net.js`) |
 | `server/index.js` | Static file server + WebSocket rooms, one `GameSim` per room |
 | `install.sh`, `scripts/package.mjs` | The installer for a packaged release, and the script that packs one into `release/` |
@@ -84,7 +85,9 @@ travels with it. A dry level (`weather: { rain: 0, wet: 0 }`) skips the reflecti
 1. Copy one of the files in `shared/levels/` and change the geometry. A level is data: `solids` (boxes with a material),
    `containers`, `props` (models from `shared/props.js`), `lights`, `decals`, `pickups`, `spawns`, `dressing`, `env`, `shots`,
    `players` (the match size it suits), `pitch` (the menu's line about it) and optionally a `campaign` (stages of type
-   `reach`, `eliminate`, `interact`, `defend`).
+   `reach`, `eliminate`, `interact`, `defend`; a training level also uses `score`, which counts practice targets dropped,
+   and `free`, which never ends). `training: true` makes it the level behind the menu's Training mode and keeps it out of
+   the level pickers (`shared/levels/range.js`).
 2. Register it in `shared/levels/index.js`.
 3. `node scripts/sim-test.mjs` checks it: open spawn points, a full match placed cleanly, bots that find each other.
 

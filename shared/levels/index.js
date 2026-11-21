@@ -3,8 +3,9 @@
 import drydock from './drydock.js';
 import breakers from './breakers.js';
 import crosswind from './crosswind.js';
+import range from './range.js';
 
-export const LEVELS = { [drydock.id]: drydock, [breakers.id]: breakers, [crosswind.id]: crosswind };
+export const LEVELS = { [drydock.id]: drydock, [breakers.id]: breakers, [crosswind.id]: crosswind, [range.id]: range };
 export const DEFAULT_LEVEL = drydock.id;
 
 /**

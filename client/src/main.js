@@ -27,9 +27,9 @@ let settings = structuredClone(defaults);
 try { const s = JSON.parse(localStorage.getItem('irontide') || '{}'); settings = { ...defaults, ...s, q: { ...defaults.q, ...s.q }, c: { ...defaults.c, ...s.c }, m: { ...defaults.m, ...s.m }, look: { ...defaults.look, ...s.look } }; } catch { /* storage unavailable */ }
 if (params.get('q')) settings.quality = params.get('q');
 if (LEVELS[params.get('level')]) settings.q.level = settings.m.level = params.get('level');
-if (!LEVELS[settings.q.level]) settings.q.level = DEFAULT_LEVEL;
-if (!LEVELS[settings.m.level]) settings.m.level = DEFAULT_LEVEL;
-if (!['quick', 'campaign', 'multi'].includes(settings.mode)) settings.mode = 'quick';
+if (!LEVELS[settings.q.level] || LEVELS[settings.q.level].training) settings.q.level = DEFAULT_LEVEL;
+if (!LEVELS[settings.m.level] || LEVELS[settings.m.level].training) settings.m.level = DEFAULT_LEVEL;
+if (!['range', 'quick', 'campaign', 'multi'].includes(settings.mode)) settings.mode = 'quick';
 if (!crewsOf(1).includes(settings.look.b)) settings.look.b = defaults.look.b;
 if (!crewsOf(2).includes(settings.look.r)) settings.look.r = defaults.look.r;
 /** The player's crew choices as the sim takes them when they join: "blue,red,deathmatch". */
@@ -83,12 +83,14 @@ function applySettings(path) {
 }
 
 // ---------------------------------------------------------------- menu wiring
-const CAMPAIGN_LEVEL = Object.values(LEVELS).find((l) => l.campaign).id, camp = LEVELS[CAMPAIGN_LEVEL].campaign;
+const PLAYABLE = Object.values(LEVELS).filter((l) => !l.training);      // a training level is reached through Training, not picked for a match
+const CAMPAIGN_LEVEL = PLAYABLE.find((l) => l.campaign).id, camp = LEVELS[CAMPAIGN_LEVEL].campaign;
+const RANGE_LEVEL = Object.values(LEVELS).find((l) => l.training).id, course = LEVELS[RANGE_LEVEL].campaign;
 /** The level the current menu choices lead to; it is the one shown behind the menu. */
-const menuLevel = () => (settings.mode === 'quick' ? settings.q.level : settings.mode === 'multi' && settings.m.mode !== 'campaign' ? settings.m.level : CAMPAIGN_LEVEL);
+const menuLevel = () => (settings.mode === 'range' ? RANGE_LEVEL : settings.mode === 'quick' ? settings.q.level : settings.mode === 'multi' && settings.m.mode !== 'campaign' ? settings.m.level : CAMPAIGN_LEVEL);
 const showLevel = (id) => { if (current?.level.id !== id) { menuT = 0; ensureLevel(id).catch((e) => menuMsg(e.message || String(e))); } };
 const SKILL = { easy: 'Recruit', normal: 'Regular', hard: 'Veteran' };
-const GO = { quick: 'Drop in', campaign: 'Start mission', multi: 'Join room' };
+const GO = { range: 'To the range', quick: 'Drop in', campaign: 'Start mission', multi: 'Join room' };
 // the sliders go up to the game's cap; the band on each marks the size the level suits
 const SIZE = { 'q.bots': { max: MAX_PLAYERS - 1, others: 1 }, 'm.fill': { max: MAX_PLAYERS, others: 0 } };
 for (const [opt, o] of Object.entries(SIZE)) document.querySelector(`input[data-opt="${opt}"]`).max = o.max;
@@ -102,20 +104,21 @@ function refreshUI() {
   for (const g of document.querySelectorAll('[data-mode]')) g.classList.toggle('hidden', g.dataset.mode !== settings.mode);
   const q = settings.q, m = settings.m, mode = settings.mode;
   const lvl = LEVELS[menuLevel()], rec = recommendedPlayers(lvl);
-  const players = mode === 'multi' ? m.fill : q.bots + 1, crowded = mode !== 'campaign' && players > rec.max;
+  const players = mode === 'multi' ? m.fill : q.bots + 1, crowded = (mode === 'quick' || mode === 'multi') && players > rec.max;
   for (const [opt, o] of Object.entries(SIZE)) {
     const i = document.querySelector(`input[data-opt="${opt}"]`), r = recommendedPlayers(LEVELS[opt === 'q.bots' ? q.level : m.level]);
     const at = (n) => Math.max(0, Math.min(100, ((n - o.others - i.min) / (i.max - i.min)) * 100)) + '%';
     i.style.setProperty('--rec0', at(r.min)); i.style.setProperty('--rec1', at(r.max)); i.closest('.rng').classList.toggle('over', +i.value + o.others > r.max);
   }
-  $('#tbLevel').textContent = lvl.name; $('#tbBlurb').textContent = [lvl.blurb, `${rec.min}–${rec.max} players`].filter(Boolean).join(' · ');
-  $('#kOp').textContent = 'Operation ' + camp.title; $('#kSite').textContent = lvl.name + ' sector';
+  $('#tbLevel').textContent = lvl.name; $('#tbBlurb').textContent = [lvl.blurb, mode === 'range' ? '' : `${rec.min}–${rec.max} players`].filter(Boolean).join(' · ');
+  $('#kOp').textContent = mode === 'range' ? 'Training' : 'Operation ' + camp.title; $('#kSite').textContent = lvl.name + ' sector';
   $('#goLabel').textContent = GO[mode];
-  $('#pitch').textContent = mode === 'campaign' ? camp.brief
+  $('#pitch').textContent = mode === 'range' ? course.brief : mode === 'campaign' ? camp.brief
     : mode === 'multi' ? `Up to ${MAX_PLAYERS} players share a room. Empty slots are held by bots until someone takes them.`
     : lvl.pitch || `Live rounds on ${lvl.name}. Set the opposition and drop in.`;
   const b = (t) => `<b>${String(t).replace(/[&<>]/g, '')}</b>`;
-  $('#summary').innerHTML = mode === 'campaign' ? `${b(camp.stages.length + ' objectives')} · solo · ${SKILL[settings.c.skill]} opposition`
+  $('#summary').innerHTML = mode === 'range' ? `${b('Target practice')} · solo · nobody shoots back`
+    : mode === 'campaign' ? `${b(camp.stages.length + ' objectives')} · solo · ${SKILL[settings.c.skill]} opposition`
     : mode === 'multi' ? `Room ${b(m.room || 'public')} · ${{ dm: 'deathmatch', tdm: 'team deathmatch', campaign: 'co-op' }[m.mode]} if new · filled to ${m.fill} · ${MAX_PLAYERS} max`
     : `${b(q.mode === 'tdm' ? 'Team deathmatch' : 'Deathmatch')} · ${q.bots} bot${q.bots === 1 ? '' : 's'} · ${SKILL[q.skill]} · ${lvl.name}`;
   if (crowded) $('#summary').insertAdjacentHTML('beforeend', `<span class="warn">Crowded · ${lvl.name} plays best with ${rec.min}–${rec.max} players</span>`);
@@ -132,8 +135,9 @@ function openDrawer(id) {
   if ($('#drawer-crew').classList.contains('open') && !crewShown) showCrew(settings.look[settings.look.d === 'r' ? 'r' : 'b']);
   $('#menu').classList.toggle('drawer-open', !!document.querySelector('.drawer.open'));
 }
-for (const el of document.querySelectorAll('.levels')) el.innerHTML = Object.values(LEVELS).map((l) => `<button data-v="${l.id}">${l.name}</button>`).join('');
+for (const el of document.querySelectorAll('.levels')) el.innerHTML = PLAYABLE.map((l) => `<button data-v="${l.id}">${l.name}</button>`).join('');
 for (const el of document.querySelectorAll('.crews')) el.innerHTML = crewsOf(+el.dataset.side).map((id) => `<button data-v="${id}">${CREWS[id].name}</button>`).join('');
+$('#rangeBrief').innerHTML = `<b>${course.title}</b>${course.stages.length - 1} steps, then free practice · ${LEVELS[RANGE_LEVEL].name}`;
 $('#brief').innerHTML = `<b>${camp.title}</b>${camp.stages.length} objectives · ${LEVELS[CAMPAIGN_LEVEL].name}`;
 document.addEventListener('click', (e) => {
   const b = e.target.closest('button');
@@ -164,6 +168,7 @@ async function play(makeTransport) {
 const playLocal = (opts) => play(async () => new LocalTransport(opts, settings.name, lookString()));
 const startQuick = () => playLocal({ mode: settings.q.mode, level: settings.q.level, fill: settings.q.bots + 1, skill: settings.q.skill });
 const startCampaign = () => playLocal({ mode: 'campaign', level: CAMPAIGN_LEVEL, skill: settings.c.skill });
+const startRange = () => playLocal({ mode: 'campaign', level: RANGE_LEVEL });
 const startMulti = () => { menuMsg('Connecting…', true); play(async () => {
   let host = settings.m.server.trim() || location.host;
   host = host.replace(/^(https?|wss?):\/\//, '').replace(/\/+$/, '');
@@ -171,7 +176,7 @@ const startMulti = () => { menuMsg('Connecting…', true); play(async () => {
   const q = new URLSearchParams({ name: settings.name, room: settings.m.room || 'public', mode: settings.m.mode, fill: settings.m.fill, level: settings.m.level, look: lookString() });
   const t = new WsTransport(`${proto}://${host}/ws?${q}`); await t.ready; return t;
 }); };
-$('#go').onclick = () => ({ quick: startQuick, campaign: startCampaign, multi: startMulti })[settings.mode]();
+$('#go').onclick = () => ({ range: startRange, quick: startQuick, campaign: startCampaign, multi: startMulti })[settings.mode]();
 $('#resume').onclick = () => { $('#pause').classList.add('hidden'); game.setPaused(false); engine.canvas.requestPointerLock?.()?.catch?.(() => {}); };
 $('#quit').onclick = () => toMenu();
 document.addEventListener('pointerlockchange', () => {
@@ -234,6 +239,7 @@ window.__irontide = { game, engine, settings, playLocal, toMenu, vm, chars, fx, 
 if (params.get('auto')) {
   const a = params.get('auto');
   if (a === 'campaign') startCampaign();
+  else if (a === 'range') startRange();
   else if (a === 'multi') startMulti();
   else playLocal({ mode: a === 'tdm' ? 'tdm' : 'dm', level: settings.q.level, fill: +(params.get('bots') || 9) + 1, skill: params.get('skill') || 'normal' });
 }

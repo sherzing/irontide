@@ -32,7 +32,7 @@ export class GameSim {
     this.pickups = this.level.pickups.map((p) => ({ ...p, on: true, at: 0 }));
     this._p = { x: 0, y: 0, z: 0 }; this._v = { x: 0, y: 0, z: 0 };
     this.camp = null;
-    if (this.mode === 'campaign') this.camp = { stage: -1, prog: 0, t: 0, wave: 0, checkpoint: this.level.campaign.start, sendAt: 0, started: false };
+    if (this.mode === 'campaign') this.camp = { stage: -1, prog: 0, t: 0, wave: 0, score: 0, checkpoint: this.level.campaign.start, sendAt: 0, started: false };
   }
 
   // ------------------------------------------------------------------ roster
@@ -86,8 +86,8 @@ export class GameSim {
   }
   addBot(o = {}) {
     const used = new Set([...this.ents.values()].map((e) => e.name));
-    const name = BOT_NAMES.find((n) => !used.has(n)) || 'Bot' + this.nextBotId;
-    const team = o.team ?? this.pickTeam(), e = this.newEnt(this.nextBotId++, name, true, team, crewFor(team));
+    const name = o.name || BOT_NAMES.find((n) => !used.has(n)) || 'Bot' + this.nextBotId;
+    const team = o.team ?? this.pickTeam(), e = this.newEnt(this.nextBotId++, name, true, team, o.crew || crewFor(team));
     e.ai = makeAI(o.skill || this.opts.skill, o.mode || 'roam', o.post || null);
     const r = Math.random();
     e.weapon = o.weapon || (r < 0.42 ? 'carbine' : r < 0.64 ? 'smg' : r < 0.76 ? 'shotgun' : r < 0.9 ? 'marksman' : 'pistol');
@@ -236,7 +236,8 @@ export class GameSim {
   }
   kill(t, by, weapon, hs) {
     t.alive = false; t.hp = 0; t.deaths++;
-    t.respawnAt = this.time + (this.camp ? 4 : 3);
+    t.respawnAt = this.time + (t.home ? 2 : this.camp ? 4 : 3);
+    if (this.camp && t.home) { const st = this.level.campaign.stages[this.camp.stage]; if (st?.type === 'score' && (!st.line || st.line === t.line)) this.camp.score++; }
     if (by && by !== t) { by.kills++; if (by.team) this.teamScore[by.team]++; }
     if (t.temp) t.gone = this.time + 10;
     this.out.broadcast({ t: 'kill', id: t.id, by: by ? by.id : t.id, w: weapon, hs: !!hs, k: by ? by.kills : 0, d: t.deaths, ts: this.teamScore });
@@ -269,11 +270,13 @@ export class GameSim {
   say(line) { if (line) this.out.broadcast({ t: 'say', who: line[0], s: line[1] }); }
   spawnEnemies(list) {
     for (const en of list || []) {
-      this.addBot({ team: 2, weapon: en.w, mode: en.hold ? 'hold' : en.hunt ? 'hunt' : 'guard', post: { x: en.at[0], z: en.at[1] }, temp: true,
-        at: { x: en.at[0], z: en.at[1], y: en.at[2] || 0, yaw: Math.random() * 6.28 } });
+      const T = en.target, at = { x: en.at[0], z: en.at[1], y: en.at[2] || 0, yaw: T ? (-(en.face || 0) * Math.PI) / 180 : Math.random() * 6.28 };
+      const e = this.addBot({ team: 2, weapon: en.w, mode: T ? 'target' : en.hold ? 'hold' : en.hunt ? 'hunt' : 'guard', temp: !T, at, name: T ? 'Target' : null, crew: T ? 'target' : null,
+        post: { x: en.at[0], z: en.at[1], to: en.to, speed: en.speed, crouch: en.crouch } });
+      if (T) { e.home = at; e.line = T; }                    // a practice target: gets back up where it stood, and counts for the stage that names its line
     }
   }
-  enemiesLeft() { let n = 0; for (const e of this.ents.values()) if (e.bot && e.alive) n++; return n; }
+  enemiesLeft() { let n = 0; for (const e of this.ents.values()) if (e.bot && e.alive && !e.home) n++; return n; }
   objectiveMsg() {
     const c = this.camp, st = this.level.campaign.stages[c.stage];
     if (!st) return null;
@@ -282,7 +285,7 @@ export class GameSim {
   sendObjective(id) { const m = this.objectiveMsg(); if (m) { if (id != null) this.out.send(id, m); else this.out.broadcast(m); } }
   advance() {
     const c = this.camp, stages = this.level.campaign.stages;
-    c.stage++; c.prog = 0; c.t = 0; c.wave = 0;
+    c.stage++; c.prog = 0; c.t = 0; c.wave = 0; c.score = 0;
     if (c.stage >= stages.length) {
       this.phase = 'end'; this.endAt = Infinity;
       this.say(this.level.campaign.outro);
@@ -311,9 +314,9 @@ export class GameSim {
     } else if (st.type === 'defend') {
       while (c.wave < st.waves.length && c.t >= st.waves[c.wave].t) this.spawnEnemies(st.waves[c.wave++].enemies.map((e) => ({ ...e, hunt: true })));
       left = Math.max(0, st.time - c.t); c.prog = c.t / st.time; done = left <= 0;
-    }
+    } else if (st.type === 'score') { c.prog = c.score / st.kills; done = c.score >= st.kills; }      // 'free' is never done: practice goes on
     if (done) return this.advance();
-    if (this.time >= c.sendAt) { c.sendAt = this.time + 0.2; this.out.broadcast({ t: 'objp', p: r2(c.prog), left: Math.ceil(left), en: this.enemiesLeft() }); }
+    if (this.time >= c.sendAt) { c.sendAt = this.time + 0.2; this.out.broadcast({ t: 'objp', p: r2(c.prog), left: Math.ceil(left), en: st.type === 'score' ? st.kills - c.score : st.type === 'free' ? 0 : this.enemiesLeft() }); }
   }
 
   // ------------------------------------------------------------------ tick
@@ -329,7 +332,7 @@ export class GameSim {
     for (const e of this.ents.values()) {
       if (!e.alive) {
         if (e.temp) { if (e.gone && now >= e.gone) { this.ents.delete(e.id); this.out.broadcast({ t: 'left', id: e.id }); } }
-        else if (this.phase === 'play' && now >= e.respawnAt) this.spawn(e);
+        else if (this.phase === 'play' && now >= e.respawnAt) this.spawn(e, e.home);
         continue;
       }
       if (e.hp < 100 && now - e.lastHurt > 5) e.hp = Math.min(100, e.hp + 22 * dt);

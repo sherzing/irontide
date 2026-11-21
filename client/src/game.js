@@ -161,7 +161,7 @@ export class Game {
 
   async handleHi(m) {
     const { level, built } = await this.ensureLevel(m.level);
-    this.level = level; this.built = built; this.mode = m.mode;
+    this.level = level; this.built = built; this.mode = m.mode; this.card = {};
     this.world = this.chars.world = new World(levelColliders(level));
     this.initPlayer(m.id);
     for (const e of m.ents) { this.addEnt(e); if (e.id === m.id) this.me.team = e.team; }
@@ -218,7 +218,7 @@ export class Game {
     this.vm.fire(a.mag === 0);
     this.engine.camera.updateMatrixWorld(); this.vm.update({ dt: 0, speed, grounded: me.grounded, ads: this.adsWanted, sprint: false, look: { x: 0, y: 0 }, reload: -1, bolt: -1, hidden: this.scoped });
     this.vm.current.group.updateMatrixWorld(true);
-    const ends = [], hits = [], pellets = w.pellets || 1;
+    const ends = [], hits = [], pellets = w.pellets || 1; let far = 0;
     for (let p = 0; p < pellets; p++) {                     // a shotgun throws several pellets inside the same cone
     const r = Math.sqrt(Math.random()) * spread, th = Math.random() * Math.PI * 2;
     const dir = _b.set(Math.cos(th) * Math.tan(r), Math.sin(th) * Math.tan(r), -1).normalize().applyQuaternion(cam.quaternion);
@@ -234,7 +234,7 @@ export class Game {
     const wy = this.level.env.water?.y;
     if (!victim && wy != null && dir.y < -0.01) { const tw = (wy - o.y) / dir.y; if (tw > 0 && tw < best) { best = tw; surf = 'water'; } }
     const end = _c.copy(o).addScaledVector(dir, best);
-    if (victim) { this.fx.impact(end, _n.copy(dir).negate(), 'flesh', false); this.audio.impact('flesh', [end.x, end.y, end.z]); }
+    if (victim) { far = best; this.fx.impact(end, _n.copy(dir).negate(), 'flesh', false); this.audio.impact('flesh', [end.x, end.y, end.z]); }
     else if (surf === 'water') { this.fx.impact(end, _n.set(0, 1, 0), 'water', false); }
     else if (wh) { this.fx.impact(end, _n.set(wh.nx, wh.ny, wh.nz), wh.surf); if (p < 2) this.audio.impact(wh.surf, [end.x, end.y, end.z]); }
     const muzzle = this.scoped ? _d.copy(o).addScaledVector(dir, 1.2) : this.vm.muzzleWorld(_d);
@@ -246,6 +246,8 @@ export class Game {
     this.audio.shot(me.weapon);
     kick(w, me.rec, ads, me.crouch); me.shake = Math.min(1, me.shake + 0.12);
     this.net.send({ t: 'fire', w: me.weapon, o: [o.x, o.y, o.z].map((v) => Math.round(v * 100) / 100), e: ends, hits });
+    const card = this.card[me.weapon] ||= { name: w.name, shots: 0, hits: 0, head: 0, last: 0 };      // what this weapon's shots have done: shown on a training level
+    card.shots++; if (hits.length) { card.hits++; card.last = Math.round(far); if (hits.some((h) => h[1] === 'head')) card.head++; }
     if (a.mag === 0 && a.res > 0) setTimeout(() => this.me === me && me.weapon && this.startReload(), 250);
   }
 
@@ -298,7 +300,7 @@ export class Game {
       if (me.reload) {
         const r = me.reload; r.t += dt;
         while (r.cues.length && r.t / r.dur >= r.cues[0][0]) this.audio.click(r.cues.shift()[1]);
-        if (r.t >= r.dur) { const a = me.ammo[me.weapon], n = Math.min(w.mag - a.mag, a.res); a.mag += n; a.res -= n; me.reload = null; }
+        if (r.t >= r.dur) { const a = me.ammo[me.weapon], n = Math.min(w.mag - a.mag, a.res); a.mag += n; a.res -= n; me.reload = null; if (this.level.training) a.res = w.reserve; }
       }
       if (me.bolt >= 0) { const prev = me.bolt, cue = (at) => prev < at && me.bolt >= at; me.bolt += dt / (60 / w.rpm * 0.85); if (cue(0.17)) this.audio.click('boltup'); if (cue(0.25)) this.audio.click('boltback'); if (cue(0.29)) { const ej = this.vm.ejectWorld(_n); this.fx.shell(ej, V().set(1.5, 1.4, 0).applyQuaternion(cam.quaternion), me.pos.y); } if (cue(0.53)) this.audio.click('boltfwd'); if (cue(0.645)) this.audio.click('boltdown'); if (me.bolt >= 1) me.bolt = -1; }
       // ---- camera: the view as it is now, this frame's mouse movement included. A shot leaves along it.
@@ -332,6 +334,7 @@ export class Game {
       }
       // ---- hud
       const a = me.ammo[me.weapon];
+      if (this.level.training) this.hud.rangeCard(this.card[me.weapon] || { name: w.name, shots: 0, hits: 0, head: 0, last: 0 });
       this.hud.setAmmo(a.mag, a.res, w.name, w.slot, a.mag <= w.mag * 0.25, { size: w.mag, reload: me.reload ? me.reload.t / me.reload.dur : -1, ammo: me.ammo });
       const px = Math.tan(spreadOf(w, { ads: this.vm.adsT, speed, bloom: me.rec.bloom, air: !me.grounded, crouch: me.crouch })) * (innerHeight / 2) / Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
       this.hud.setCrosshair(Math.max(3, px), this.vm.adsT < 0.5 && !sprint && !me.reload);
@@ -380,7 +383,7 @@ export class Game {
       this.hud.setMatch(this.mode === 'tdm' ? { left: this.match.left, tdm: true, a: this.match.ts[1], al: 'Blue', b: this.match.ts[2], bl: 'Red' } : { left: this.match.left, a: mine?.k ?? 0, al: 'Kills', b: this.match.limit, bl: 'To win' });
     }
     const showScores = (this.key('Tab') || (this.ended && this.mode !== 'campaign')) && !this.paused;
-    if (showScores) this.hud.scoreboard(true, { title: `${this.level.name} · ${{ dm: 'Deathmatch', tdm: 'Team deathmatch', campaign: 'Campaign' }[this.mode]}`, teams: this.mode === 'tdm', rows: [...this.roster.values()].map((r) => ({ ...r, me: r.id === me.id })) });
+    if (showScores) this.hud.scoreboard(true, { title: `${this.level.name} · ${this.level.training ? 'Training' : { dm: 'Deathmatch', tdm: 'Team deathmatch', campaign: 'Campaign' }[this.mode]}`, teams: this.mode === 'tdm', rows: [...this.roster.values()].filter((r) => r.crew !== 'target').map((r) => ({ ...r, me: r.id === me.id })) });
     else this.hud.scoreboard(false);
     this.hud.update(dt, me.yaw);
   }

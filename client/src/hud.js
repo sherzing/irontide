@@ -20,7 +20,7 @@ export class Hud {
     this.d = {
       health: h, hpN: q(h, '.n'), hpSeg: [...h.querySelectorAll('.segs i')],
       ammo: a, mag: q(a, '.mag'), res: q(a, '.res'), wname: q(a, '.name'), wmode: q(a, '.mode'), ticks: q(a, '.ticks'), rl: q(a, '.rl i'), others: q(a, '.others'),
-      obj: o, objPips: q(o, '.pips'), objIdx: q(o, '.idx'), objX: q(o, '.x'), objP: q(o, '.p'), objPi: q(o, '.p i'), objE: q(o, '.e'),
+      obj: o, objPips: q(o, '.pips'), objIdx: q(o, '.idx'), objX: q(o, '.x'), objP: q(o, '.p'), objPi: q(o, '.p i'), objE: q(o, '.e'), objCard: q(o, '.tally'),
       match: m, mT: q(m, '.t'), mA: q(m, '.s1 b'), mAl: q(m, '.s1 span'), mB: q(m, '.s2 b'), mBl: q(m, '.s2 span'),
       prompt: p, promptT: q(p, 'span'), promptP: q(p, 'i'),
       marker: $('#marker'), sub: $('#subtitle'), death: $('#death'), deathP: $('#death p'), banner: $('#banner'), score: $('#scoreboard'),
@@ -99,12 +99,17 @@ export class Hud {
     d.objPips.innerHTML = Array.from({ length: o.n }, (_, i) => `<i class="${i < o.i ? 'done' : i === o.i ? 'cur' : ''}"></i>`).join('');
     d.objIdx.textContent = `${String(o.i + 1).padStart(2, '0')}/${String(o.n).padStart(2, '0')}`;
     d.objX.textContent = o.text;
-    d.objP.style.display = o.kind === 'defend' || o.kind === 'interact' ? '' : 'none'; d.objPi.style.width = '0%'; d.objE.textContent = ''; this.c.objE = '';
+    d.objP.style.display = o.kind === 'defend' || o.kind === 'interact' || o.kind === 'score' ? '' : 'none'; d.objPi.style.width = '0%'; d.objE.textContent = ''; this.c.objE = '';
   }
   objProgress(kind, p, left, en) {
     const d = this.d; d.objPi.style.width = Math.round(p * 100) + '%';
-    const t = kind === 'defend' ? `Hold <b>${left}s</b> · Hostiles <b>${en}</b>` : en ? `Hostiles remaining <b>${en}</b>` : '';
+    const t = kind === 'defend' ? `Hold <b>${left}s</b> · Hostiles <b>${en}</b>` : kind === 'score' ? (en ? `Targets to drop <b>${en}</b>` : '') : en ? `Hostiles remaining <b>${en}</b>` : '';
     if (this.set('objE', t)) d.objE.innerHTML = t;
+  }
+  /** The range card under the objective: what the player's shots with this weapon have done. c: null | { name, shots, hits, head, last } */
+  rangeCard(c) {
+    const t = !c ? '' : `${c.name}<br>Shots <b>${c.shots}</b> · Hits <b>${c.hits}</b>${c.shots ? ` · <b>${Math.round(c.hits / c.shots * 100)}%</b>` : ''} · Head <b>${c.head}</b>${c.last ? `<br>Last hit <b>${c.last} m</b>` : ''}`;
+    if (this.set('card', t)) this.d.objCard.innerHTML = t;
   }
   marker(x, y, text, visible) {
     const m = this.d.marker; if (this.set('mkV', !!visible)) m.classList.toggle('hidden', !visible); if (!visible) return;
@@ -233,7 +238,7 @@ export class Hud {
   }
   reset() {
     const d = this.d; d.kill.innerHTML = ''; d.chat.innerHTML = '';
-    this.setObjective(null); this.setMatch(null); this.death(null); this.banner(null); this.prompt(null); this.marker(0, 0, '', false); this.scoreboard(false);
+    this.setObjective(null); this.rangeCard(null); this.setMatch(null); this.death(null); this.banner(null); this.prompt(null); this.marker(0, 0, '', false); this.scoreboard(false);
     d.sub.style.opacity = 0; for (const x of this.dmg) x.b.remove(); this.dmg = []; this.shots = [];
     this.cmp.markers = []; this.cmp.sig = -1; this.cmp.dirty = true; this.c = {}; this.am.key = null;
   }

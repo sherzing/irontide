@@ -79,4 +79,19 @@ while (sim.phase === 'play' && ticks < 20 * 400) {
 }
 console.log(`  campaign: ${sim.phase} after ${(ticks * TICK).toFixed(0)} s, deaths ${me.deaths}`, sim.phase === 'end' ? 'OK' : '');
 if (sim.phase !== 'end') fail('the campaign did not finish');
+// the training course with a ghost that walks to each mark and drops the targets the stage asks for: it must end in free practice, with every target back up
+for (const level of Object.values(LEVELS).filter((l) => l.training)) {
+  const tr = mk({ mode: 'campaign', level: level.id }, true); tr.addPlayer(1, 'Ghost');
+  const g = tr.ents.get(1), stages = level.campaign.stages, last = stages.length - 1; let n = 0;
+  for (; tr.camp.stage < last && n < 20 * 120; n++) {
+    const st = stages[tr.camp.stage];
+    if (st.at) tr.handle(1, { t: 'st', p: [st.at[0], 0, st.at[2]], yw: 0, pt: 0, f: 0, w: 'carbine' });
+    if (n % 10 === 0) for (const e of tr.ents.values()) if (e.bot && e.alive && (!st.line || e.line === st.line)) { tr.damage(e, g, 200, 'body', 'carbine'); break; }
+    tr.tick(TICK);
+  }
+  for (let i = 0; i < 20 * 5; i++) tr.tick(TICK);
+  const targets = [...tr.ents.values()].filter((e) => e.home), up = targets.filter((e) => e.alive).length, ok = tr.camp.stage === last && tr.phase === 'play' && up === targets.length && g.hp === 100;
+  console.log(`\n${level.name}: course reached free practice after ${(n * TICK).toFixed(0)} s, ${up} of ${targets.length} targets standing, nobody shot back`, ok ? 'OK' : '');
+  if (!ok) fail(`training on ${level.name}: stage ${tr.camp.stage} of ${last}, phase ${tr.phase}, ${up}/${targets.length} targets up, hp ${g.hp}`);
+}
 console.log(process.exitCode ? '\nFAILED' : '\nall checks passed');

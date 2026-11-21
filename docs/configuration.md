@@ -69,7 +69,7 @@ Address-bar parameters, mainly for testing:
 | --- | --- |
 | `?q=low` | Start with that graphics quality |
 | `?dr=0` | Dynamic resolution off |
-| `?auto=dm`, `tdm`, `campaign`, `multi` | Skip the menu and start that mode |
+| `?auto=dm`, `tdm`, `campaign`, `range`, `multi` | Skip the menu and start that mode (`range` is Training) |
 | `&bots=20` | Bots for `auto=dm` or `auto=tdm` |
 | `&skill=easy` | Bot skill for `auto=dm` or `auto=tdm` |
 | `&level=crosswind` | The level for quick match and for a new multiplayer room |
@@ -90,6 +90,7 @@ restart the server.
 | What a bot's shot can hit | `hitCharacter` in `shared/collision.js` |
 | Which shots the server refuses: rate, range, line of sight, and how far it trusts the client's own account | `humanFire` in `shared/sim.js` |
 | Crews: names, sides, colours, kit | `CREWS` in `shared/crews.js`; the shape of each kit item in `KIT` in `client/src/crewkit.js` |
+| The training course: steps, what the range officer says, where the targets stand | `campaign` and `TARGETS` in `shared/levels/range.js` |
 | Which weapons exist and their number keys | `WEAPON_ORDER` in `shared/weapons.js` |
 | How a weapon is held, aimed and reloaded on screen | `DEFS` in `client/src/viewmodel.js` |
 | How hard a weapon shoves the body it kills | `SHOVE` in `client/src/ragdoll.js` |
@@ -97,7 +98,7 @@ restart the server.
 | How long a body lies, and how many lie at once | `LINGER` and `MAX_LYING` in `client/src/characters.js` |
 | Bot skill levels and bot names | `SKILLS` and `BOT_NAMES` in `shared/bots.js` |
 | Player size, eye height, step height | `PLAYER` in `shared/collision.js` |
-| Which levels exist | `LEVELS` in `shared/levels/index.js` |
+| Which levels exist | `LEVELS` in `shared/levels/index.js`. One with `training: true` is the Training mode's and is not offered for matches |
 | A level's recommended match size | `players: { min, max }` in `shared/levels/<id>.js` |
 | A level's mood: sky, sun, fog, rain, bloom, colour grade | `env` in `shared/levels/<id>.js` |
 | How far the sun's shadows reach on a wide level | `SHADOW_FIT` and `SHADOW_RANGE` in `client/src/engine.js`; `env.shadowRange` for one level |

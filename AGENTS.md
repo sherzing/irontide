@@ -25,7 +25,7 @@ A change is finished when every check its files touch is **green**.
 | `server/`, or a message between client and server | Restart the server, then `node scripts/net-test.mjs ws://localhost:<port>` | It reports the cap connected and one more player rejected, at 20 snapshots a second |
 | `shared/weapons.js`, a hit volume, or `humanFire` in `shared/sim.js` | `node scripts/ballistics.mjs` | Exit code 0 |
 | `install.sh`, `scripts/package.mjs` | `npm run package`, then `sh release/install.sh --from release/irontide.tar.gz --dir <new folder> --port <free port> --service none` | The first prints `started and joined OK`; the second exits 0 and prints `is installed in <new folder>` |
-| `client/` | `npm run build`, then `node scripts/play-test.mjs <out prefix> "http://localhost:<port>/?auto=dm&bots=9&level=<id>"` for each level the change can reach | It prints `errors: 0`, and you have opened every screenshot it saved |
+| `client/` | `npm run build`, then `node scripts/play-test.mjs <out prefix> "http://localhost:<port>/?auto=dm&bots=9&level=<id>"` for each level the change can reach (the training range: `?auto=range`) | It prints `errors: 0`, and you have opened every screenshot it saved |
 
 ## Gotchas
 
@@ -38,7 +38,7 @@ A change is finished when every check its files touch is **green**.
 - **Headless.** The browser scripts drive Playwright's Linux Chromium on the machine's GPU
   (`scripts/browser.mjs`). On a machine without a GPU set `SWIFT=1`: the pictures are right, the frame rates mean
   nothing.
-- **Scripting a match.** `?auto=dm|tdm|campaign|multi` skips the menu. `window.__irontide` exposes `game`, `engine`,
+- **Scripting a match.** `?auto=dm|tdm|campaign|range|multi` skips the menu. `window.__irontide` exposes `game`, `engine`,
   `settings` and `chars`. `game.debugInput = { yaw, pitch, keys: ['KeyW'], fire, ads }` plays for you.
 - **Frame rates.** Measure with `&dr=0`, because dynamic resolution hides the cost, and report the GPU and the
   quality preset with the number.
@@ -66,6 +66,8 @@ A change is finished when every check its files touch is **green**.
 - **Crews** (`shared/crews.js`) are looks only: the body texture repainted and kit hung on bones
   (`client/src/crewkit.js`). `node scripts/crew-sheet.mjs out.jpg` shows them all, front and back. BLUE's crews
   stay cold-coloured and RED's warm: that is how a team is told apart.
+- **Training.** `shared/levels/range.js` is a level with `training: true` whose campaign is the course. Its
+  `enemies` with `target` set are practice targets: they never shoot and get back up where they stood.
 - **Deaths** are a ragdoll (`client/src/ragdoll.js`): particles on the joints, which the skeleton follows. Judge a
   change on the bench: `npx vite --port 5177`, then `node scripts/death-strip.mjs out.jpg` films one death
   (`from=180 move=5 head=1 at=wall` and more, listed at the top of the script) and
