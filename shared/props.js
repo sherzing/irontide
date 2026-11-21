@@ -45,6 +45,8 @@ export const PROP_DEFS = {
 };
 
 export const CONTAINER = { L: 6.06, H: 2.59, W: 2.44 };
+/** A container's doors: where a hinge sits (±x at an end, ±z from the centre line), how wide a leaf is, and the leaf's bottom and top edge. */
+export const DOOR = { hingeX: CONTAINER.L / 2 - 0.035, hingeZ: CONTAINER.W / 2 - 0.16, leaf: CONTAINER.W / 2 - 0.166, y0: 0.125, y1: CONTAINER.H - 0.135 };
 
 /** Expands a level description into the flat collider list used by World. */
 export function levelColliders(level) {
@@ -69,15 +71,36 @@ export function levelColliders(level) {
   return out;
 }
 
+const hash = (x, y, z) => { const s = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453; return s - Math.floor(s); };
+/**
+ * The four door leaves of an open container, swung back past its corners, in the container's own frame: the hinge at
+ * (x, z), the leaf turned by `a` about +y from pointing along `dir`·z. The picture (client/src/containers.js) and
+ * the colliders below are both made from this.
+ */
+export function openLeaves(c) {
+  const out = [];
+  for (const end of [1, -1]) {
+    const k = end > 0 ? 1 : 2, turn = end > 0 ? 0 : Math.PI;
+    out.push({ x: end * DOOR.hingeX, z: end * DOOR.hingeZ, a: turn - 1.85 - hash(c.x, k, c.z) * 0.25, dir: -1 });
+    out.push({ x: end * DOOR.hingeX, z: -end * DOOR.hingeZ, a: turn + 1.95 + hash(c.z, k, c.x) * 0.22, dir: 1 });
+  }
+  return out;
+}
+
 export function containerBoxes(c) {
   const { L, H, W } = CONTAINER, yaw = c.yaw || 0, y = c.y || 0;
   if (!c.open) return [{ c: [c.x, y + H / 2, c.z], h: [L / 2, H / 2, W / 2], yaw, surf: 'metal' }];
   const cs = Math.cos(yaw), sn = Math.sin(yaw), t = 0.08;
-  const at = (lx, ly, lz, hx, hy, hz) => ({ c: [c.x + lx * cs + lz * sn, y + ly, c.z - lx * sn + lz * cs], h: [hx, hy, hz], yaw, surf: 'metal' });
-  return [
+  const at = (lx, ly, lz, hx, hy, hz, turn = 0) => ({ c: [c.x + lx * cs + lz * sn, y + ly, c.z - lx * sn + lz * cs], h: [hx, hy, hz], yaw: yaw + turn, surf: 'metal' });
+  const out = [
     at(0, 0.07, 0, L / 2, 0.07, W / 2),                  // floor
     at(0, H - t / 2, 0, L / 2, t / 2, W / 2),            // roof
     at(0, H / 2, -W / 2 + t / 2, L / 2, H / 2, t / 2),   // sides
     at(0, H / 2, W / 2 - t / 2, L / 2, H / 2, t / 2),
   ];
+  for (const f of openLeaves(c)) {                       // the door leaves
+    const mid = f.dir * DOOR.leaf / 2;
+    out.push(at(f.x + mid * Math.sin(f.a), (DOOR.y0 + DOOR.y1) / 2, f.z + mid * Math.cos(f.a), 0.03, (DOOR.y1 - DOOR.y0) / 2, DOOR.leaf / 2, f.a));
+  }
+  return out;
 }

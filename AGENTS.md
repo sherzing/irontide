@@ -43,7 +43,8 @@ A change is finished when every check its files touch is **green**.
   quality preset with the number.
 - **Levels.** Every spawn point and campaign enemy stands on open floor; sim-test checks it on every level.
   `dressing` is looks only: what a player can touch is a solid, so a scenery builder and its colliders are written
-  as a pair (see `cargoPlane` in `shared/levels/crosswind.js`).
+  as a pair (see `cargoPlane` in `shared/levels/crosswind.js`, and `openLeaves` in `shared/props.js`, which gives an
+  open container's door leaves to both the picture and the colliders).
 - **Ground** is flat tiles that meet edge to edge. Overlapping floors flicker at a distance, and bots walk only at
   `groundY`.
 - **`dress(type, {...})`** overwrites `type` with an option of that name; scenery options use `kind`.

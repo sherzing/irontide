@@ -1,11 +1,11 @@
 // Shipping containers: one modelled 20 ft box (corrugated walls and roof, corner castings, doors with lock
 // rods) drawn with GPU instancing, plus a layered paint / rust / livery shader.
 import * as THREE from 'three';
-import { CONTAINER } from '../../shared/props.js';
+import { CONTAINER, DOOR, openLeaves } from '../../shared/props.js';
 import { loadTex, canvasTex, SURF_VERT_PARS, SURF_VERT, SURF_FRAG_PARS, surfUniforms } from './materials.js';
 
 const { L, H, W } = CONTAINER;
-const POST = 0.16, HINGE_X = L / 2 - 0.035, HINGE_Z = W / 2 - POST, LEAF = HINGE_Z - 0.006;
+const POST = 0.16, HINGE_X = DOOR.hingeX, HINGE_Z = DOOR.hingeZ, LEAF = DOOR.leaf;
 
 // ------------------------------------------------------------------ tiny flat-shaded mesh builder
 class Soup {
@@ -128,7 +128,7 @@ function buildEndWall() {
 /** A door leaf in hinge space: hinge axis on local (0, y, 0), the leaf extends toward `dir`·z. */
 function buildLeaf(dir) {
   const m = new Soup();
-  const y0 = 0.125, y1 = H - 0.135, hgt = y1 - y0, cy = (y0 + y1) / 2, zc = dir * LEAF / 2;
+  const y0 = DOOR.y0, y1 = DOOR.y1, hgt = y1 - y0, cy = (y0 + y1) / 2, zc = dir * LEAF / 2;
   // door-end livery space: u runs left to right for a viewer standing in front of the doors
   const liv = (x, y, z) => [(W / 2 - (dir < 0 ? HINGE_Z + z : -HINGE_Z + z)) / W, y / H];
   m.box(-0.02, cy, zc, 0.04, hgt, LEAF, 0, liv, 2);
@@ -331,13 +331,9 @@ export async function buildContainers(list, { castShadow = true } = {}) {
     M.makeRotationY(c.yaw || 0).setPosition(c.x, y, c.z);
     if (c.lod) { sets[c.lod > 1 ? 'far' : 'mid'].push({ m: M.clone(), color, data }); continue; }
     sets.shell.push({ m: M.clone(), color, data });
-    const leaves = (base, open, k) => {
-      const a = open ? [-1.85 - hash(c.x, k, c.z) * 0.25, 1.95 + hash(c.z, k, c.x) * 0.22] : [-(c.ajar || 0), 0];
-      sets.leafA.push({ m: base.clone().multiply(T.makeTranslation(HINGE_X, 0, HINGE_Z)).multiply(R.makeRotationY(a[0])), color, data });
-      sets.leafB.push({ m: base.clone().multiply(T.makeTranslation(HINGE_X, 0, -HINGE_Z)).multiply(R.makeRotationY(a[1])), color, data });
-    };
-    if (c.open) { leaves(M, true, 1); leaves(M.clone().multiply(R.makeRotationY(Math.PI)), true, 2); }
-    else { sets.end.push({ m: M.clone(), color, data }); leaves(M, false, 0); }
+    const leaf = (f) => sets[f.dir < 0 ? 'leafA' : 'leafB'].push({ m: M.clone().multiply(T.makeTranslation(f.x, 0, f.z)).multiply(R.makeRotationY(f.a)), color, data });
+    if (c.open) openLeaves(c).forEach(leaf);             // the same leaves the colliders are made from
+    else { sets.end.push({ m: M.clone(), color, data }); leaf({ x: HINGE_X, z: HINGE_Z, a: -(c.ajar || 0), dir: -1 }); leaf({ x: HINGE_X, z: -HINGE_Z, a: 0, dir: 1 }); }
   }
   const make = { shell: buildShell, end: buildEndWall, leafA: () => buildLeaf(-1), leafB: () => buildLeaf(1), mid: buildMid, far: buildFar };
   for (const k of Object.keys(sets)) {
