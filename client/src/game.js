@@ -125,7 +125,14 @@ export class Game {
         if (this.match) this.match.ts = m.ts;
         const mine = me && (m.id === me.id || m.by === me.id);
         this.hud.killfeed(k?.name || '?', v?.name || '?', m.w, m.hs, mine, m.by === m.id);
-        if (me && m.id === me.id) { me.alive = false; me.deadT = 0; me.killer = m.by === m.id ? '' : k?.name || ''; me.reload = null; this.audio.ui('death'); this.mouse.l = this.mouse.r = false; }
+        this.chars.get(m.id)?.die(m.by === m.id ? null : me && m.by === me.id ? me.pos : this.chars.get(m.by)?.pos, m.w, m.hs);
+        if (me && m.id === me.id) {
+          me.alive = false; me.deadT = 0; me.killer = m.by === m.id ? '' : k?.name || ''; me.reload = null; this.audio.ui('death'); this.mouse.l = this.mouse.r = false;
+          // which way the player goes down: away from the shot, as far as there is room, onto either side
+          const from = m.by === m.id ? null : this.chars.get(m.by)?.pos, dx = from ? me.pos.x - from.x : 0, dz = from ? me.pos.z - from.z : 0, l = Math.hypot(dx, dz) || 1;
+          const wall = from && this.world.raycast(me.pos.x, me.pos.y + 0.3, me.pos.z, dx / l, 0, dz / l, 1, 'solid'), room = from ? clamp((wall ? wall.t : 1) - 0.35, 0, 0.5) : 0;
+          me.fall = { x: dx / l * room, z: dz / l * room, side: Math.random() < 0.5 ? -1 : 1 };
+        }
         break;
       }
       case 'match': {
@@ -154,7 +161,7 @@ export class Game {
   async handleHi(m) {
     const { level, built } = await this.ensureLevel(m.level);
     this.level = level; this.built = built; this.mode = m.mode;
-    this.world = new World(levelColliders(level));
+    this.world = this.chars.world = new World(levelColliders(level));
     this.initPlayer(m.id);
     for (const e of m.ents) { this.addEnt(e); if (e.id === m.id) this.me.team = e.team; }
     m.pickups.forEach((on, i) => this.setPickup(i, on));
@@ -334,11 +341,11 @@ export class Game {
       const px = Math.tan(w.spread + (w.adsSpread - w.spread) * this.vm.adsT + w.moveSpread * Math.min(1, speed / 4.5) + me.bloom + (me.grounded ? 0 : 0.05)) * (innerHeight / 2) / Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
       this.hud.setCrosshair(Math.max(3, px), this.vm.adsT < 0.5 && !sprint && !me.reload);
     } else {
-      // death camera: sink and tilt
+      // death camera: the legs go, the head comes down faster and faster and lands on its side with a small bounce
       me.deadT += dt; this.engine.scope = 0;
-      const k = Math.min(1, me.deadT / 0.6);
-      cam.position.set(me.pos.x, me.pos.y + me.eye * (1 - k * 0.78), me.pos.z);
-      cam.rotation.set(me.pitch * (1 - k) - k * 0.25, me.yaw, k * 0.6);
+      const f = me.fall || { x: 0, z: 0, side: 1 }, t = me.deadT, k = Math.min(1, t / 0.55), down = k * k, after = Math.max(0, t - 0.55), bounce = Math.exp(-after * 9) * Math.abs(Math.sin(after * 20)) * (t > 0.55 ? 0.05 : 0);
+      cam.position.set(me.pos.x + f.x * down, me.pos.y + 0.17 + (me.eye - 0.17) * (1 - down) + bounce, me.pos.z + f.z * down);
+      cam.rotation.set(me.pitch * (1 - down) + down * 0.12, me.yaw, f.side * (down * 1.2 - bounce * 2));
       this.vm.update({ dt, speed: 0, grounded: true, ads: false, sprint: false, look: this.look, reload: -1, bolt: -1, hidden: true });
       this.hud.setCrosshair(0, false);
       if (!this.ended) this.hud.death(me.killer ? `Killed by ${me.killer} — redeploying…` : 'Redeploying…');

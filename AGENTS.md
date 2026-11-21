@@ -54,6 +54,11 @@ A change is finished when every check its files touch is **green**.
   fore-end where the skeleton puts them and the hand poses in `client/src/viewmodel.js` fit it. Judge them on the
   bench: `npx vite --port 5177`, then `node scripts/vm-lab.mjs out.jpg views <weapon>` (also `strip <weapon> reload`).
   A single-shot weapon fires once per trigger press, so a scripted match must release `fire` between shots.
+- **Deaths** are a ragdoll (`client/src/ragdoll.js`): particles on the joints, which the skeleton follows. Judge a
+  change on the bench: `npx vite --port 5177`, then `node scripts/death-strip.mjs out.jpg` films one death
+  (`from=180 move=5 head=1 at=wall` and more, listed at the top of the script) and
+  `node scripts/death-strip.mjs - trials=40` kills forty soldiers every which way and counts the odd ones: a foot
+  thrown into the air, a body that never comes to rest. Forty deaths give 0 odd, now and then 1.
 - **Props** load from `<id>.lod.gltf`, which `npm run optimize` writes. Run it after adding a model.
 - **Installer.** `install.sh` is POSIX `sh` (it runs under dash and BusyBox) and holds no list of valid settings:
   it asks the release's own server with `--check`. An installed copy runs the `install.sh` packed inside it, so

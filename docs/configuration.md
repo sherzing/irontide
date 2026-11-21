@@ -86,6 +86,9 @@ restart the server.
 | Weapons: damage, fire rate, magazine, pellets, reload, recoil, spread | `WEAPONS` in `shared/weapons.js` |
 | Which weapons exist and their number keys | `WEAPON_ORDER` in `shared/weapons.js` |
 | How a weapon is held, aimed and reloaded on screen | `DEFS` in `client/src/viewmodel.js` |
+| How hard a weapon shoves the body it kills | `SHOVE` in `client/src/ragdoll.js` |
+| How a killed soldier falls: weight, joint stops, friction, gravity | the constants at the top of `client/src/ragdoll.js` |
+| How long a body lies, and how many lie at once | `LINGER` and `MAX_LYING` in `client/src/characters.js` |
 | Bot skill levels and bot names | `SKILLS` and `BOT_NAMES` in `shared/bots.js` |
 | Player size, eye height, step height | `PLAYER` in `shared/collision.js` |
 | Which levels exist | `LEVELS` in `shared/levels/index.js` |
