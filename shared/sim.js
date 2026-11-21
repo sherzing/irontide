@@ -1,6 +1,6 @@
 // Authoritative match simulation. Transport-agnostic: the browser runs it in-process for
 // solo play (quick game / campaign) and server/index.js runs it per room for multiplayer.
-import { World, PLAYER, hitCharacter } from './collision.js';
+import { World, PLAYER, hitCharacter, CROUCH_SCALE } from './collision.js';
 import { NavGrid } from './nav.js';
 import { WEAPONS, WEAPON_ORDER, damageAt } from './weapons.js';
 import { levelColliders } from './props.js';
@@ -41,7 +41,7 @@ export class GameSim {
 
   newEnt(id, name, bot, team) {
     const e = { id, name, bot, team, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0, pitch: 0, hp: 100, alive: false, flags: 0,
-      weapon: 'carbine', kills: 0, deaths: 0, respawnAt: 0, lastHurt: -99, lastFire: -99, grounded: true, use: false, ai: null, gone: 0 };
+      weapon: 'carbine', kills: 0, deaths: 0, respawnAt: 0, lastHurt: -99, lastFire: -99, shots: 0, grounded: true, use: false, ai: null, gone: 0 };
     this.ents.set(id, e);
     return e;
   }
@@ -164,14 +164,25 @@ export class GameSim {
       case 'ping': this.out.send(id, { t: 'pong', c: m.c }); break;
     }
   }
+  /**
+   * A human's shot. Their own client decided what it hit; this only refuses what cannot be: a weapon firing faster than it
+   * can, a target out of range, a target behind a wall.
+   */
   humanFire(e, m) {
     const w = WEAPONS[m.w];
     if (!e.alive || !w || this.phase !== 'play') return;
-    if (this.time - e.lastFire < (60 / w.rpm) * 0.6) return;
-    e.lastFire = this.time;
-    const pellets = w.pellets || 1;
-    if (Array.isArray(m.o) && Array.isArray(m.e)) this.out.broadcast({ t: 'fire', id: e.id, w: m.w, o: m.o, e: m.e.slice(0, pellets) }, e.id);
-    const ey = e.y + (e.flags & 1 ? PLAYER.crouchEye : PLAYER.eye);
+    // Rate: shots are paid from an account that fills at the weapon's rate and holds a few. This clock moves in 50 ms
+    // ticks and the network bunches messages, so the time between two honest shots says little.
+    const rate = (w.rpm / 60) * 1.1, most = 1 + rate * 0.15;
+    e.shots = Math.min(most, e.shots + (this.time - e.lastFire) * rate); e.lastFire = this.time;
+    if (e.shots < 1) return;
+    e.shots -= 1;
+    const pellets = w.pellets || 1, ends = Array.isArray(m.e) ? m.e : [];
+    if (Array.isArray(m.o)) this.out.broadcast({ t: 'fire', id: e.id, w: m.w, o: m.o, e: ends.slice(0, pellets) }, e.id);
+    // Sight: from where the client says it fired, if that is near where this side has the shooter (its news of them is a
+    // tick or more old), to where it says the shot landed, if that is near the target. Otherwise to the target's middle.
+    const ey = e.y + (e.flags & 1 ? PLAYER.crouchEye : PLAYER.eye), o = m.o;
+    const from = Array.isArray(o) && o.every(Number.isFinite) && Math.hypot(o[0] - e.x, o[1] - ey, o[2] - e.z) < 2 ? o : [e.x, ey, e.z];
     let n = 0;
     for (const h of Array.isArray(m.hits) ? m.hits : []) {
       if (++n > pellets) break;
@@ -179,9 +190,11 @@ export class GameSim {
       if (!t || !t.alive || !this.hostile(e, t)) continue;
       const d = Math.hypot(t.x - e.x, t.y - e.y, t.z - e.z);
       if (d > w.range + 5) continue;
-      const k = t.flags & 1 ? 0.7 : 1;
-      if (!this.world.los(e.x, ey, e.z, t.x, t.y + 1.2 * k, t.z, 'bullet') && !this.world.los(e.x, ey, e.z, t.x, t.y + 1.64 * k, t.z, 'bullet')
-        && !this.world.los(e.x, ey, e.z, t.x, t.y + 0.45, t.z, 'bullet')) continue;
+      const k = t.flags & 1 ? CROUCH_SCALE : 1, end = ends[h[2]];
+      const seen = (p) => { for (const y of [1.2 * k, 1.58 * k, 0.45]) if (this.world.los(p[0], p[1], p[2], t.x, t.y + y, t.z, 'bullet')) return true; return false; };
+      const landed = Array.isArray(end) && end.every(Number.isFinite) && Math.hypot(end[0] - t.x, end[2] - t.z) < 2.5 && end[1] > t.y - 0.5 && end[1] < t.y + 2.5
+        && this.world.los(from[0], from[1], from[2], end[0], end[1], end[2], 'bullet');
+      if (!landed && !seen(from)) continue;
       const zone = h[1] === 'head' ? 'head' : h[1] === 'legs' ? 'legs' : 'body';
       this.damage(t, e, damageAt(w, d, zone), zone, m.w);
     }

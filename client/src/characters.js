@@ -6,10 +6,24 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { loadModel } from './levelbuild.js';
 import { canvasTex } from './materials.js';
 import { Ragdoll, SHOVE } from './ragdoll.js';
+import { raySphere, rayCapsule, CROUCH_SCALE } from '../../shared/collision.js';
 
 const TEAM_TINT = [new THREE.Color(0.95, 0.9, 0.8), new THREE.Color(0.62, 0.82, 1.3), new THREE.Color(1.35, 0.7, 0.6)];
 const TEAM_CSS = ['#e8e2d0', '#7fb8ff', '#ff8a70'];
 const _view = new THREE.Matrix4(), _frustum = new THREE.Frustum(), _sphere = new THREE.Sphere(new THREE.Vector3(), 3);
+/**
+ * What a player's shot can hit: the soldier as he is drawn. Capsules between his joints, [from, to, radius in metres, zone],
+ * and a ball round his head. Arms count as legs. Judge a change with `node scripts/aim-lab.mjs volumes out.jpg`.
+ */
+const HIT = [
+  ['Hips', 'Spine2', 0.18, 'body'], ['Spine2', 'Neck', 0.15, 'body'], ['LeftArm', 'RightArm', 0.135, 'body'], ['LeftUpLeg', 'RightUpLeg', 0.14, 'body'],
+  ['LeftArm', 'LeftForeArm', 0.085, 'legs'], ['LeftForeArm', 'LeftHand', 0.07, 'legs'], ['LeftHand', 'LeftHandMiddle1', 0.06, 'legs'],
+  ['RightArm', 'RightForeArm', 0.085, 'legs'], ['RightForeArm', 'RightHand', 0.07, 'legs'], ['RightHand', 'RightHandMiddle1', 0.06, 'legs'],
+  ['LeftUpLeg', 'LeftLeg', 0.115, 'legs'], ['LeftLeg', 'LeftFoot', 0.09, 'legs'], ['LeftFoot', 'LeftToeBase', 0.075, 'legs'],
+  ['RightUpLeg', 'RightLeg', 0.115, 'legs'], ['RightLeg', 'RightFoot', 0.09, 'legs'], ['RightFoot', 'RightToeBase', 0.075, 'legs'],
+];
+const HEAD = [0, 10, 1.5], HEAD_R = 0.125;      // the head's middle in the Head bone's own frame (centimetres), and its radius in metres
+const _head = new THREE.Vector3();
 const LINGER = 12, SINK = 1.6, MAX_LYING = 10;      // seconds a body lies, seconds it takes to sink away, bodies left lying at once
 const lerpAngle = (a, b, t) => { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return a + d * t; };
 
@@ -113,6 +127,24 @@ class Char {
     if (!alive && this.alive) this.die();
     this.alive = alive;
   }
+  /** A ray (o, unit d) against the soldier as he stands on the screen: { t, zone } for the nearest hit within maxT, or null. */
+  hit(o, d, maxT) {
+    const p = this.pos, body = this.body, tall = body.root.scale.y;
+    const near = raySphere(o.x, o.y, o.z, d.x, d.y, d.z, p.x, p.y + 0.9 * tall, p.z, 1.25);
+    if (near < 0 || near > maxT) return null;                                    // not even near him
+    body.root.updateMatrixWorld(true);
+    const b = body.bones;
+    _head.fromArray(HEAD).applyMatrix4(b.Head.matrixWorld);
+    let t = raySphere(o.x, o.y, o.z, d.x, d.y, d.z, _head.x, _head.y, _head.z, HEAD_R);
+    if (t >= 0 && t < maxT) return { t, zone: 'head' };                          // through the head is a head shot, whatever else is in line
+    let best = maxT, zone = null;
+    for (const [from, to, r, z] of HIT) {
+      const A = b[from].matrixWorld.elements, B = b[to].matrixWorld.elements;
+      t = rayCapsule(o.x, o.y, o.z, d.x, d.y, d.z, A[12], A[13], A[14], B[12], B[13], B[14], r);
+      if (t >= 0 && t < best) { best = t; zone = z; }
+    }
+    return zone ? { t: best, zone } : null;
+  }
   /** Killed. from: where the shot came from ({x, z}) when somebody fired one; weapon: its id; head: a head shot. */
   die(from, weapon, head) {
     if (!this.alive || this.body.dead) return;
@@ -141,7 +173,7 @@ class Char {
     const root = body.root;
     root.visible = true; root.position.copy(this.pos); root.rotation.y = this.yaw;
     const crouch = this.flags & 1;
-    root.scale.y += ((crouch ? 0.74 : 1) - root.scale.y) * Math.min(1, dt * 12);
+    root.scale.y += ((crouch ? CROUCH_SCALE : 1) - root.scale.y) * Math.min(1, dt * 12);
     // locomotion blend
     const s = this.speed, w = body.w, act = body.act;
     const tw = { Idle: s < 0.4 ? 1 : 0, Walk: s >= 0.4 && s < 3.4 ? 1 : 0, Run: s >= 3.4 ? 1 : 0 };

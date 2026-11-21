@@ -203,7 +203,8 @@ export class World {
 }
 
 // ---- character hit volumes -------------------------------------------------------------------
-function raySphere(ox, oy, oz, dx, dy, dz, cx, cy, cz, r) {
+/** Ray (unit direction) vs sphere: the distance to the hit (0 from inside), or -1. */
+export function raySphere(ox, oy, oz, dx, dy, dz, cx, cy, cz, r) {
   const mx = ox - cx, my = oy - cy, mz = oz - cz;
   const b = mx * dx + my * dy + mz * dz, c = mx * mx + my * my + mz * mz - r * r;
   if (c > 0 && b > 0) return -1;
@@ -211,26 +212,37 @@ function raySphere(ox, oy, oz, dx, dy, dz, cx, cy, cz, r) {
   if (disc < 0) return -1;
   return Math.max(0, -b - Math.sqrt(disc));
 }
-// Ray vs vertical capsule (segment from y0 to y1 at x,z).
-function rayVCapsule(ox, oy, oz, dx, dy, dz, x, z, y0, y1, r) {
-  // closest approach between ray and vertical segment (iterative clamp, exact enough for hitscan)
-  const hxz = dx * dx + dz * dz;
-  let t = hxz > 1e-9 ? ((x - ox) * dx + (z - oz) * dz) / hxz : 0;
-  if (t < 0) t = 0;
-  let y = clamp(oy + dy * t, y0, y1);
-  t = Math.max(0, (x - ox) * dx + (y - oy) * dy + (z - oz) * dz);
-  y = clamp(oy + dy * t, y0, y1);
-  return raySphere(ox, oy, oz, dx, dy, dz, x, y, z, r);
+/** Ray (unit direction) vs a capsule: every point within r of the segment a-b. Returns the distance to the hit, or -1. */
+export function rayCapsule(ox, oy, oz, dx, dy, dz, ax, ay, az, bx, by, bz, r) {
+  let nx = bx - ax, ny = by - ay, nz = bz - az; const len = Math.hypot(nx, ny, nz);
+  let best = raySphere(ox, oy, oz, dx, dy, dz, ax, ay, az, r);
+  if (len < 1e-6) return best;
+  const t1 = raySphere(ox, oy, oz, dx, dy, dz, bx, by, bz, r);
+  if (t1 >= 0 && (best < 0 || t1 < best)) best = t1;
+  nx /= len; ny /= len; nz /= len;
+  const mx = ox - ax, my = oy - ay, mz = oz - az, mn = mx * nx + my * ny + mz * nz, dn = dx * nx + dy * ny + dz * nz;
+  const a = 1 - dn * dn, b = mx * dx + my * dy + mz * dz - mn * dn, c = mx * mx + my * my + mz * mz - mn * mn - r * r;      // the side: distance to the axis = r
+  if (c <= 0) { if (mn >= 0 && mn <= len) return 0; }                                                                        // the ray starts inside it
+  else if (a > 1e-9 && b < 0) {
+    const disc = b * b - a * c;
+    if (disc >= 0) { const t = (-b - Math.sqrt(disc)) / a, along = mn + t * dn; if (along >= 0 && along <= len && (best < 0 || t < best)) best = t; }
+  }
+  return best;
 }
-/** Returns {t, zone} for a ray against a character whose feet are at (fx,fy,fz), or null. */
+export const CROUCH_SCALE = 0.74;      // a crouching soldier is this much shorter: the model is squashed by it, and so are the volumes
+/**
+ * Returns {t, zone} for a ray against a character whose feet are at (fx,fy,fz), or null. Three upright volumes fitted to
+ * the soldier model's middle: what bots are shot with. A player's own shots are tested against the soldier as he is drawn
+ * (client/src/characters.js), arms and stride included.
+ */
 export function hitCharacter(ox, oy, oz, dx, dy, dz, maxT, fx, fy, fz, crouch) {
-  const k = crouch ? 0.7 : 1;
+  const k = crouch ? CROUCH_SCALE : 1;
   let best = maxT, zone = null;
-  let t = raySphere(ox, oy, oz, dx, dy, dz, fx, fy + 1.66 * k, fz, 0.15);
+  let t = raySphere(ox, oy, oz, dx, dy, dz, fx, fy + 1.58 * k, fz, 0.14);
   if (t >= 0 && t < best) { best = t; zone = 'head'; }
-  t = rayVCapsule(ox, oy, oz, dx, dy, dz, fx, fz, fy + 1.0 * k, fy + 1.36 * k, 0.25);
+  t = rayCapsule(ox, oy, oz, dx, dy, dz, fx, fy + 1.0 * k, fz, fx, fy + 1.3 * k, fz, 0.25);
   if (t >= 0 && t < best) { best = t; zone = 'body'; }
-  t = rayVCapsule(ox, oy, oz, dx, dy, dz, fx, fz, fy + 0.2, fy + 0.8 * k, 0.2);
+  t = rayCapsule(ox, oy, oz, dx, dy, dz, fx, fy + 0.2, fz, fx, fy + 0.8 * k, fz, 0.2);
   if (t >= 0 && t < best) { best = t; zone = 'legs'; }
   return zone ? { t: best, zone } : null;
 }

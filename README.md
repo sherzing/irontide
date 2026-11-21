@@ -47,12 +47,12 @@ Every setting and where it lives: [docs/configuration.md](docs/configuration.md)
 
 | Path | What |
 | --- | --- |
-| `shared/` | Engine-agnostic game core used by both browser and server: collision, navigation grid, weapons, bot AI, the authoritative `GameSim`, level data |
+| `shared/` | Engine-agnostic game core used by both browser and server: collision, navigation grid, weapons and what a shot does (`weapons.js`), bot AI, the authoritative `GameSim`, level data |
 | `shared/levels/` | Levels as plain data (`drydock.js`, `breakers.js`, `crosswind.js`), authoring helpers (`kit.js`), registry (`index.js`) |
 | `client/src/` | Renderer + post chain (`engine.js`), level builder (`levelbuild.js`), instanced containers (`containers.js`), scenery builders (`dressing.js`, `dressing-yard.js`, `dressing-airfield.js`), surface shaders (`materials.js`), rain (`rain.js`), FX, first-person weapons (`viewmodel.js`, `vmkit.js`, `vmparts.js` and one file per gun: `vmcarbine.js`, `vmsmg.js`, `vmshotgun.js`, `vmsniper.js`, `vmpistol.js`), soldiers (`characters.js`) and how they fall when killed (`ragdoll.js`), HUD (`hud.js`, `ui.css`), session (`game.js`), transports (`net.js`) |
 | `server/index.js` | Static file server + WebSocket rooms, one `GameSim` per room |
 | `install.sh`, `scripts/package.mjs` | The installer for a packaged release, and the script that packs one into `release/` |
-| `scripts/` | Asset fetcher, headless sim test (`sim-test.mjs`), server protocol test (`net-test.mjs`), Playwright screenshot/playtest tools |
+| `scripts/` | Asset fetcher, headless sim test (`sim-test.mjs`), server protocol test (`net-test.mjs`), the model of what the weapons do (`ballistics.mjs`), Playwright screenshot/playtest tools and benches (`aim-lab.mjs`, `death-strip.mjs`, `vm-lab.mjs`) |
 
 Solo modes run the very same `GameSim` in-process (`LocalTransport`), so quick match, campaign and multiplayer share one code path.
 
@@ -117,6 +117,7 @@ magazine well in the same place, so the hand poses in `viewmodel.js` fit each of
 ```bash
 node scripts/sim-test.mjs                      # every level: spawn checks, full-match placement, a bot match; then complete matches and the campaign (no browser)
 node scripts/net-test.mjs ws://localhost:8787  # joins 64 clients, checks the 65th is refused
+node scripts/ballistics.mjs                    # what the weapons do to a target, and what the server makes of honest shots (no browser)
 node scripts/play-test.mjs /tmp/shot "http://localhost:8787/?auto=dm&bots=6&level=breakers"   # drives a match in headless Chromium
 ```
 

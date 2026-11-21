@@ -83,7 +83,11 @@ restart the server.
 | Players per match (hard cap) | `MAX_PLAYERS` in `shared/sim.js` |
 | Simulation and snapshot rate | `TICK` in `shared/sim.js` |
 | Match time limit and score limit | `GameSim` constructor defaults in `shared/sim.js` (`timeLimit`, `scoreLimit`) |
-| Weapons: damage, fire rate, magazine, pellets, reload, recoil, spread | `WEAPONS` in `shared/weapons.js` |
+| Weapons: damage, fire rate, magazine, pellets, reload, recoil, spread | `WEAPONS` in `shared/weapons.js`. `node scripts/ballistics.mjs` prints what the table does to a target |
+| How spread adds up; how fast a kick lands, how much of it sights and crouching leave, how fast the view comes back | `spreadOf` and `RECOIL` in `shared/weapons.js` |
+| What a player's shot can hit on a soldier | `HIT`, `HEAD` and `HEAD_R` in `client/src/characters.js` |
+| What a bot's shot can hit | `hitCharacter` in `shared/collision.js` |
+| Which shots the server refuses: rate, range, line of sight, and how far it trusts the client's own account | `humanFire` in `shared/sim.js` |
 | Which weapons exist and their number keys | `WEAPON_ORDER` in `shared/weapons.js` |
 | How a weapon is held, aimed and reloaded on screen | `DEFS` in `client/src/viewmodel.js` |
 | How hard a weapon shoves the body it kills | `SHOVE` in `client/src/ragdoll.js` |

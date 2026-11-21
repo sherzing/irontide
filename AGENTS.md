@@ -23,6 +23,7 @@ A change is finished when every check its files touch is **green**.
 | --- | --- | --- |
 | `shared/` | `node scripts/sim-test.mjs` | Exit code 0 |
 | `server/`, or a message between client and server | Restart the server, then `node scripts/net-test.mjs ws://localhost:<port>` | It reports the cap connected and one more player rejected, at 20 snapshots a second |
+| `shared/weapons.js`, a hit volume, or `humanFire` in `shared/sim.js` | `node scripts/ballistics.mjs` | Exit code 0 |
 | `install.sh`, `scripts/package.mjs` | `npm run package`, then `sh release/install.sh --from release/irontide.tar.gz --dir <new folder> --port <free port> --service none` | The first prints `started and joined OK`; the second exits 0 and prints `is installed in <new folder>` |
 | `client/` | `npm run build`, then `node scripts/play-test.mjs <out prefix> "http://localhost:<port>/?auto=dm&bots=9&level=<id>"` for each level the change can reach | It prints `errors: 0`, and you have opened every screenshot it saved |
 
@@ -54,6 +55,14 @@ A change is finished when every check its files touch is **green**.
   fore-end where the skeleton puts them and the hand poses in `client/src/viewmodel.js` fit it. Judge them on the
   bench: `npx vite --port 5177`, then `node scripts/vm-lab.mjs out.jpg views <weapon>` (also `strip <weapon> reload`).
   A single-shot weapon fires once per trigger press, so a scripted match must release `fire` between shots.
+- **Aim.** A shot leaves the screen's centre along the view of the frame it is fired in. Spread, recoil and its way
+  back are functions in `shared/weapons.js`, used by the client and by `node scripts/ballistics.mjs`, which prints
+  what a weapon table does to a target and fails when a held trigger stops hitting or the view stops coming back.
+  A player's shots are tested against capsules on the soldier's bones (`HIT` in `client/src/characters.js`); bots
+  shoot at three upright volumes (`hitCharacter`). The server only refuses what cannot be (`humanFire`). In the
+  browser, with `npx vite --port 5177`: `node scripts/aim-lab.mjs volumes out.jpg` paints what a shot hits over
+  the soldier, `sights out.png` shows each sight against the screen's centre, `lag` measures a shot trailing a
+  turning view (0 is right).
 - **Deaths** are a ragdoll (`client/src/ragdoll.js`): particles on the joints, which the skeleton follows. Judge a
   change on the bench: `npx vite --port 5177`, then `node scripts/death-strip.mjs out.jpg` films one death
   (`from=180 move=5 head=1 at=wall` and more, listed at the top of the script) and

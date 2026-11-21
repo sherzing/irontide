@@ -1,8 +1,8 @@
 // A play session: local player controller, weapons, and the client side of the sim protocol.
 import * as THREE from 'three';
-import { World, PLAYER, hitCharacter } from '../../shared/collision.js';
+import { World, PLAYER } from '../../shared/collision.js';
 import { levelColliders } from '../../shared/props.js';
-import { WEAPONS, WEAPON_ORDER } from '../../shared/weapons.js';
+import { WEAPONS, WEAPON_ORDER, spreadOf, newRecoil, kick, recoilStep, recoilPulled } from '../../shared/weapons.js';
 import { MAX_PLAYERS } from '../../shared/sim.js';
 
 const V = () => new THREE.Vector3();
@@ -35,7 +35,7 @@ export class Game {
   initPlayer(id) {
     this.me = {
       id, alive: false, hp: 100, team: 0, pos: V(), vel: V(), yaw: 0, pitch: 0, grounded: true, crouch: false, eye: PLAYER.eye, stepOff: 0,
-      weapon: 'carbine', ammo: {}, reload: null, nextFire: 0, bloom: 0, rp: 0, ry: 0, recover: 0, bolt: -1, stepDist: 0, surf: 'concrete',
+      weapon: 'carbine', ammo: {}, reload: null, nextFire: 0, rec: newRecoil(), bolt: -1, stepDist: 0, surf: 'concrete',
       deadT: 0, killer: '', use: false, lastShot: -9, shake: 0, roll: 0, bob: 0, fov: this.settings.fov,
     };
     this.refill();
@@ -74,6 +74,7 @@ export class Game {
       const zoom = this.engine.camera.fov / this.settings.fov;
       const s = this.settings.sens * 0.00011 * zoom, dy = this.settings.invertY === 'on' ? -e.movementY : e.movementY;
       this.me.yaw -= e.movementX * s; this.me.pitch = clamp(this.me.pitch - dy * s, -1.5, 1.5);
+      recoilPulled(this.me.rec, -dy * s, -e.movementX * s);
       this.look.x += e.movementX; this.look.y += dy;
     });
     addEventListener('wheel', (e) => {
@@ -104,7 +105,7 @@ export class Game {
       case 'spawn': {
         if (!me || m.id !== me.id) break;
         me.pos.set(m.p[0], m.p[1], m.p[2]); me.vel.set(0, 0, 0); me.yaw = m.yw; me.pitch = 0; me.alive = true; me.hp = 100; me.crouch = false; me.reload = null; me.bolt = -1;
-        me.deadT = 0; me.rp = me.ry = me.recover = 0;
+        me.deadT = 0; me.rec = newRecoil();
         if (!this.obj) this.refill(); else for (const k of WEAPON_ORDER) { const a = me.ammo[k]; a.mag = WEAPONS[k].mag; a.res = Math.max(a.res, WEAPONS[k].mag * 2); }
         this.vm.setWeapon(me.weapon); this.hud.death(null); this.engine.hurt = 0;
         break;
@@ -196,7 +197,7 @@ export class Game {
   switchWeapon(name) {
     const me = this.me; if (!me || !me.alive || me.weapon === name) return;
     this.dropAim();
-    me.weapon = name; me.reload = null; me.bolt = -1; me.bloom = 0; this.vm.setWeapon(name); this.audio.click('draw');
+    me.weapon = name; me.reload = null; me.bolt = -1; me.rec = newRecoil(); this.vm.setWeapon(name); this.audio.click('draw');
   }
   startReload() {
     const me = this.me; if (!me || !me.alive || me.reload) return;
@@ -212,8 +213,7 @@ export class Game {
     a.mag--; me.nextFire = now + 60 / w.rpm; me.lastShot = now;
     const cam = this.engine.camera, ads = this.vm.adsT;
     const speed = Math.hypot(me.vel.x, me.vel.z);
-    let spread = w.spread + (w.adsSpread - w.spread) * ads + w.moveSpread * Math.min(1, speed / 4.5) * (1 - ads * 0.6) + me.bloom * (1 - ads * 0.5);
-    if (!me.grounded) spread += 0.05; if (me.crouch) spread *= 0.75;
+    const spread = spreadOf(w, { ads, speed, bloom: me.rec.bloom, air: !me.grounded, crouch: me.crouch });
     const o = cam.getWorldPosition(_a);
     this.vm.fire(a.mag === 0);
     this.engine.camera.updateMatrixWorld(); this.vm.update({ dt: 0, speed, grounded: me.grounded, ads: this.adsWanted, sprint: false, look: { x: 0, y: 0 }, reload: -1, bolt: -1, hidden: this.scoped });
@@ -227,7 +227,7 @@ export class Game {
     let best = wh ? wh.t : w.range, victim = null, zone = null;
     for (const c of this.chars.map.values()) {
       if (!c.alive || (me.team !== 0 && c.info.team === me.team)) continue;
-      const h = hitCharacter(o.x, o.y, o.z, dir.x, dir.y, dir.z, best, c.pos.x, c.pos.y, c.pos.z, c.flags & 1);
+      const h = c.hit(o, dir, best);
       if (h) { best = h.t; victim = c; zone = h.zone; }
     }
     let surf = wh && !victim ? wh.surf : null;
@@ -239,14 +239,12 @@ export class Game {
     else if (wh) { this.fx.impact(end, _n.set(wh.nx, wh.ny, wh.nz), wh.surf); if (p < 2) this.audio.impact(wh.surf, [end.x, end.y, end.z]); }
     const muzzle = this.scoped ? _d.copy(o).addScaledVector(dir, 1.2) : this.vm.muzzleWorld(_d);
     if (p % 2 === 0) this.fx.tracer(muzzle, end);
-    ends.push([end.x, end.y, end.z].map((v) => Math.round(v * 100) / 100)); if (victim) hits.push([victim.id, zone]);
+    ends.push([end.x, end.y, end.z].map((v) => Math.round(v * 100) / 100)); if (victim) hits.push([victim.id, zone, p]);
     }
     if (!w.bolt) { const ej = this.vm.ejectWorld(_n); this.fx.shell(ej, V().set(1.6 + Math.random(), 1.6 + Math.random(), 0.3 * Math.random()).applyQuaternion(cam.quaternion).add(me.vel), me.pos.y); }
     else me.bolt = 0;
     this.audio.shot(me.weapon);
-    const ak = ads > 0.5 ? 0.72 : 1, ck = me.crouch ? 0.85 : 1;
-    me.rp += w.recoil[0] * ak * ck * (0.85 + Math.random() * 0.3); me.ry += (Math.random() - 0.5) * 2 * w.recoil[1] * ak;
-    me.bloom = Math.min(w.maxBloom, me.bloom + w.bloom); me.shake = Math.min(1, me.shake + 0.12);
+    kick(w, me.rec, ads, me.crouch); me.shake = Math.min(1, me.shake + 0.12);
     this.net.send({ t: 'fire', w: me.weapon, o: [o.x, o.y, o.z].map((v) => Math.round(v * 100) / 100), e: ends, hits });
     if (a.mag === 0 && a.res > 0) setTimeout(() => this.me === me && me.weapon && this.startReload(), 250);
   }
@@ -303,15 +301,7 @@ export class Game {
         if (r.t >= r.dur) { const a = me.ammo[me.weapon], n = Math.min(w.mag - a.mag, a.res); a.mag += n; a.res -= n; me.reload = null; }
       }
       if (me.bolt >= 0) { const prev = me.bolt, cue = (at) => prev < at && me.bolt >= at; me.bolt += dt / (60 / w.rpm * 0.85); if (cue(0.17)) this.audio.click('boltup'); if (cue(0.25)) this.audio.click('boltback'); if (cue(0.29)) { const ej = this.vm.ejectWorld(_n); this.fx.shell(ej, V().set(1.5, 1.4, 0).applyQuaternion(cam.quaternion), me.pos.y); } if (cue(0.53)) this.audio.click('boltfwd'); if (cue(0.645)) this.audio.click('boltdown'); if (me.bolt >= 1) me.bolt = -1; }
-      if (fireHeld && !this.ended) this.tryFire(now);
-      this.firePressed = false;
-      me.bloom = Math.max(0, me.bloom - dt * 0.09);
-      // recoil: apply pending kick quickly, then recover part of it
-      const ap = me.rp * Math.min(1, dt * 28), ay = me.ry * Math.min(1, dt * 28);
-      me.pitch = clamp(me.pitch + ap, -1.5, 1.5); me.yaw += ay; me.rp -= ap; me.ry -= ay; me.recover += ap * 0.55;
-      if (now - me.lastShot > 0.11) { const rc = me.recover * Math.min(1, dt * 7); me.pitch -= rc; me.recover -= rc; }
-
-      // ---- camera
+      // ---- camera: the view as it is now, this frame's mouse movement included. A shot leaves along it.
       this.scoped = me.weapon === 'marksman' && this.vm.adsT > 0.82 && this.adsWanted;
       this.engine.scope += ((this.scoped ? 1 : 0) - this.engine.scope) * Math.min(1, dt * 22);
       const targetFov = this.settings.fov + (w.adsFov - this.settings.fov) * this.vm.adsT + (sprint ? 5 : 0);
@@ -320,10 +310,15 @@ export class Game {
       me.bob += dt * (me.grounded ? speed : 0) * 1.9;
       const bobY = Math.sin(me.bob * 2) * 0.012 * Math.min(1, speed / 4.6) * (1 - this.vm.adsT * 0.7);
       me.shake = Math.max(0, me.shake - dt * 4);
-      const sh = me.shake * me.shake * 0.012;
+      const sh = me.shake * me.shake * 0.012, shp = (Math.random() - 0.5) * sh, shy = (Math.random() - 0.5) * sh;
       cam.position.set(me.pos.x, me.pos.y + me.eye + me.stepOff + bobY - this.vm.landT * 0.05, me.pos.z);
-      cam.rotation.set(me.pitch + (Math.random() - 0.5) * sh, me.yaw + (Math.random() - 0.5) * sh, me.roll);
+      cam.rotation.set(me.pitch + shp, me.yaw + shy, me.roll);
       if (Math.abs(cam.fov - me.fov) > 0.01) { cam.fov = me.fov; cam.updateProjectionMatrix(); }
+      if (fireHeld && !this.ended) this.tryFire(now);
+      this.firePressed = false;
+      // recoil: a shot's kick lands over the next frames and comes back once the trigger rests
+      const [kp, ky] = recoilStep(w, me.rec, dt, now - me.lastShot);
+      if (kp || ky) { me.pitch = clamp(me.pitch + kp, -1.5, 1.5); me.yaw += ky; cam.rotation.set(me.pitch + shp, me.yaw + shy, me.roll); }
       this.vm.update({ dt, speed, grounded: me.grounded, ads: this.adsWanted, sprint, look: this.look, reload: me.reload ? me.reload.t / me.reload.dur : -1, bolt: me.bolt, hidden: this.scoped });
       this.look.x = this.look.y = 0;
 
@@ -338,7 +333,7 @@ export class Game {
       // ---- hud
       const a = me.ammo[me.weapon];
       this.hud.setAmmo(a.mag, a.res, w.name, w.slot, a.mag <= w.mag * 0.25, { size: w.mag, reload: me.reload ? me.reload.t / me.reload.dur : -1, ammo: me.ammo });
-      const px = Math.tan(w.spread + (w.adsSpread - w.spread) * this.vm.adsT + w.moveSpread * Math.min(1, speed / 4.5) + me.bloom + (me.grounded ? 0 : 0.05)) * (innerHeight / 2) / Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
+      const px = Math.tan(spreadOf(w, { ads: this.vm.adsT, speed, bloom: me.rec.bloom, air: !me.grounded, crouch: me.crouch })) * (innerHeight / 2) / Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
       this.hud.setCrosshair(Math.max(3, px), this.vm.adsT < 0.5 && !sprint && !me.reload);
     } else {
       // death camera: the legs go, the head comes down faster and faster and lands on its side with a small bounce
