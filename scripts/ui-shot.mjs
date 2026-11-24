@@ -1,5 +1,7 @@
 // Captures every menu / HUD state for visual review: node scripts/ui-shot.mjs <outPrefix> <baseUrl> [group ...]
-// groups: menu, campaign, states, dm, tdm (default: all). W/H env set the viewport.
+// groups: menu, rooms, campaign, states, dm, tdm (default: all). W/H env set the viewport.
+// rooms needs a game server behind <baseUrl>: it puts players into two rooms and joins one from the menu's list.
+import WebSocket from 'ws';
 import { launch } from './browser.mjs';
 const [prefix, base, ...groups] = process.argv.slice(2);
 const want = (g) => !groups.length || groups.includes(g);
@@ -23,6 +25,23 @@ if (want('menu')) {
   await page.click('[data-drawer="controls"]'); await page.waitForTimeout(450); await shot('menu-controls');
   await page.keyboard.press('Escape'); await page.waitForTimeout(350);
   console.log('drawers closed:', await G(() => !document.querySelector('.drawer.open')));
+}
+
+if (want('rooms')) {
+  const join = (name, room, mode, level) => new Promise((res, rej) => { const ws = new WebSocket(`${base.replace('http', 'ws')}/ws?${new URLSearchParams({ name, room, mode, level, fill: 8 })}`); ws.on('message', (d) => { if (JSON.parse(d).t === 'hi') res(ws); }); ws.on('error', rej); });
+  const there = await Promise.all([join('Alice', 'ui-shot quay', 'tdm', 'ropewalk'), join('Bob', 'ui-shot quay', 'tdm', 'ropewalk'), join('Kim', 'ui-shot pier', 'dm', 'breakers')]).catch(() => null);
+  if (!there) console.log('rooms: no game server behind', base, '- skipped');
+  else {
+    await page.goto(base + '/?q=medium'); await page.waitForFunction(() => !document.querySelector('#menu').classList.contains('hidden'));
+    await page.click('[data-opt="mode"] [data-v="multi"]'); await page.waitForSelector('button.room[data-room="ui-shot pier"]'); await frames(4);
+    console.log('rooms listed:', JSON.stringify(await G(() => [...document.querySelectorAll('button.room')].map((b) => [...b.children].map((c) => c.textContent).filter(Boolean).join(' | ')))));
+    console.log('on the Multiplayer button:', await G(() => document.querySelector('#playing').textContent), '| the button reads:', await G(() => document.querySelector('#goLabel').textContent));
+    await shot('menu-rooms');
+    await page.click('button.room[data-room="ui-shot pier"]'); await alive();
+    console.log('joined by a click:', JSON.stringify(await G(() => { const g = window.__irontide.game; return { level: g.level.id, mode: g.mode, players: [...g.roster.values()].filter((r) => !r.bot).map((r) => r.name) }; })));
+    await G(() => window.__irontide.toMenu()); for (const ws of there) ws.close();
+    await page.waitForFunction(() => !document.querySelector('button.room[data-room^="ui-shot"]')); console.log('rooms listed after everyone left:', await G(() => document.querySelectorAll('button.room[data-room^="ui-shot"]').length));
+  }
 }
 
 if (want('campaign')) {

@@ -15,7 +15,7 @@ a.ws.send(JSON.stringify({ t: 'chat', s: 'hello' }));
 await sleep(700);
 const sa = b.snap.s.find((s) => s[0] === a.hi.id);
 console.log('bob sees alice at', sa.slice(1, 4), 'weapon', sa[7], '| entities in snapshot', b.snap.s.length, '| bob msgs', JSON.stringify(b.msgs));
-const status = await (await fetch(base.replace('ws', 'http') + '/status')).json(); console.log('status', JSON.stringify(status));
+const status = await (await fetch(base.replace('ws', 'http') + '/status')).json(); console.log('status', JSON.stringify(status), '| names its players:', status.find((r) => r.room === 'test')?.names?.join() === 'Alice,Bob');
 // fill the room to the cap and try one more
 const more = await Promise.all(Array.from({ length: MAX_PLAYERS - 2 }, (_, i) => connect('P' + i)));
 await sleep(500);

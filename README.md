@@ -43,7 +43,8 @@ Development: `npm run dev` (Vite with hot reload + game server; Vite proxies `/w
 
 Server options: `node server/index.js --port 8787 --mode tdm|dm|campaign --fill 12 --skill easy|normal|hard --level drydock|breakers|crosswind|ropewalk`.
 Other machines join by opening `http://<your-ip>:8787` (or entering `<your-ip>:8787` under Multiplayer → Server).
-`GET /status` lists the live rooms. The first player into a room decides its mode, level and bot fill.
+The first player into a room decides its mode, level and bot fill. The menu's Multiplayer options list the open rooms: level, mode,
+who is in each and how far the match is; a click on one joins it. The list is `GET /status`, read every 3 seconds.
 
 Installing a packaged release on another machine, with no build there: [INSTALL.md](INSTALL.md). `npm run package` makes the release.
 Hosting it for other people, with hardware requirements: [docs/server-setup.md](docs/server-setup.md).
@@ -55,7 +56,7 @@ Every setting and where it lives: [docs/configuration.md](docs/configuration.md)
 | --- | --- |
 | `shared/` | Engine-agnostic game core used by both browser and server: collision, navigation grid, weapons and what a shot does (`weapons.js`), bot AI, crews (`crews.js`), the authoritative `GameSim`, level data |
 | `shared/levels/` | Levels as plain data (`drydock.js`, `breakers.js`, `crosswind.js`, `ropewalk.js`, the training range `range.js`), authoring helpers (`kit.js`), registry (`index.js`) |
-| `client/src/` | Renderer + post chain (`engine.js`), level builder (`levelbuild.js`), instanced containers (`containers.js`), scenery builders (`dressing.js`, `dressing-yard.js`, `dressing-airfield.js`, `dressing-town.js`), surface shaders (`materials.js`), rain (`rain.js`), FX, first-person weapons (`viewmodel.js`, `vmkit.js`, `vmparts.js` and one file per gun: `vmcarbine.js`, `vmsmg.js`, `vmshotgun.js`, `vmsniper.js`, `vmpistol.js`), soldiers (`characters.js`), what each crew wears (`crewkit.js`) and how they fall when killed (`ragdoll.js`), HUD (`hud.js`, `ui.css`), session (`game.js`), transports (`net.js`) |
+| `client/src/` | Renderer + post chain (`engine.js`), level builder (`levelbuild.js`), instanced containers (`containers.js`), scenery builders (`dressing.js`, `dressing-yard.js`, `dressing-airfield.js`, `dressing-town.js`), surface shaders (`materials.js`), rain (`rain.js`), FX, first-person weapons (`viewmodel.js`, `vmkit.js`, `vmparts.js` and one file per gun: `vmcarbine.js`, `vmsmg.js`, `vmshotgun.js`, `vmsniper.js`, `vmpistol.js`), soldiers (`characters.js`), what each crew wears (`crewkit.js`) and how they fall when killed (`ragdoll.js`), HUD (`hud.js`, `ui.css`), the menu's room list (`rooms.js`), session (`game.js`), transports (`net.js`) |
 | `server/index.js` | Static file server + WebSocket rooms, one `GameSim` per room |
 | `install.sh`, `scripts/package.mjs` | The installer for a packaged release, and the script that packs one into `release/` |
 | `scripts/` | Asset fetcher, headless sim test (`sim-test.mjs`), server protocol test (`net-test.mjs`), the model of what the weapons do (`ballistics.mjs`), a level's sight lines and walking distances (`level-lines.mjs`), Playwright screenshot/playtest tools and benches (`aim-lab.mjs`, `crew-sheet.mjs`, `death-strip.mjs`, `vm-lab.mjs`) |

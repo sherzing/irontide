@@ -39,6 +39,14 @@ export class GameSim {
   humans() { let n = 0; for (const e of this.ents.values()) if (!e.bot) n++; return n; }
   hostile(a, b) { return a.id !== b.id && (a.team === 0 || a.team !== b.team); }
   info(e) { return { id: e.id, name: e.name, team: e.team, crew: e.crew, bot: e.bot, k: e.kills, d: e.deaths }; }
+  /** What a room list shows of this match: who is in it and how far along it is. `score` is [BLUE, RED], or the leader's kills in a deathmatch. */
+  status() {
+    const names = []; let bots = 0, lead = 0;
+    for (const e of this.ents.values()) { if (!e.bot) names.push(e.name); else if (!this.camp) bots++; lead = Math.max(lead, e.kills); }      // a mission's bots are the enemy, not players
+    const s = { mode: this.mode, level: this.level.id, names, bots, phase: this.phase };
+    if (this.camp) return { ...s, stage: Math.min(this.camp.stage + 1, this.level.campaign.stages.length), stages: this.level.campaign.stages.length };
+    return { ...s, left: Math.max(0, Math.ceil(this.timeLeft)), score: this.mode === 'tdm' ? this.teamScore.slice(1) : lead, limit: this.opts.scoreLimit };
+  }
 
   /** crew: what they wear (shared/crews.js): looks only. */
   newEnt(id, name, bot, team, crew) {

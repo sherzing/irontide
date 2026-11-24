@@ -43,6 +43,9 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--acc); outli
 .seg button:hover { color: var(--ink); background: rgba(242, 239, 232, 0.07); }
 .seg button.on { color: var(--acc-hi); background: rgba(79, 216, 196, 0.14); }
 .seg button.on::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--acc); }
+/* people in open rooms, on the Multiplayer button */
+.seg button .n { margin-left: calc(var(--px) * 9); padding: calc(var(--px) * 1) calc(var(--px) * 6); font: 700 calc(var(--px) * 11.5) var(--f-mono); font-style: normal; letter-spacing: 0.04em; color: var(--acc-ink); background: var(--acc); }
+.seg button .n:empty { display: none; }
 .seg.crews { display: grid; grid-template-columns: 1fr 1fr; }
 .seg.crews button { border-bottom: 1px solid var(--line); }
 .seg.crews button:nth-child(2n) { border-right: 0; }
@@ -89,8 +92,8 @@ kbd { display: inline-block; min-width: calc(var(--px) * 23); padding: calc(var(
 .topbar .wm span { color: var(--acc); }
 .topbar .sep { width: 1px; height: calc(var(--px) * 18); background: var(--line2); }
 .topbar b { font: 600 calc(var(--px) * 19) var(--f-head); letter-spacing: 0.2em; text-transform: uppercase; }
-.topbar .live { display: inline-flex; align-items: center; gap: calc(var(--px) * 8); }
-.topbar .live::before { content: ""; width: calc(var(--px) * 7); height: calc(var(--px) * 7); border-radius: 50%; background: var(--acc); box-shadow: 0 0 calc(var(--px) * 8) var(--acc); animation: pulse 2.4s ease-in-out infinite; }
+.live { display: inline-flex; align-items: center; gap: calc(var(--px) * 8); }
+.live::before { content: ""; width: calc(var(--px) * 7); height: calc(var(--px) * 7); border-radius: 50%; background: var(--acc); box-shadow: 0 0 calc(var(--px) * 8) var(--acc); animation: pulse 2.4s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.35; } }
 
 .hero { position: absolute; left: calc(var(--px) * 86); bottom: calc(var(--px) * 46); width: calc(var(--px) * 900); text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7); }
@@ -119,7 +122,32 @@ h1.logo span { color: var(--acc); }
 .opts .two .row + .row > label { width: auto; }
 .summary { margin-top: calc(var(--px) * 12); padding-top: calc(var(--px) * 10); border-top: 1px solid var(--line); width: calc(var(--px) * 640); font: 500 calc(var(--px) * 11.5) var(--f-mono); letter-spacing: 0.2em; text-transform: uppercase; color: var(--mute); }
 .summary b { color: var(--acc-hi); font-weight: 500; }
+.opts .joining [data-new] { opacity: 0.38; }      /* the room is open: its match is set, these apply to a new one */
 .summary .warn { display: block; margin-top: calc(var(--px) * 6); color: var(--warn); }
+
+/* the open rooms of the server, beside the Multiplayer options (rooms.js fills the list) */
+.rooms { position: absolute; right: calc(var(--px) * 34); top: calc(var(--px) * 84); width: calc(var(--px) * 468); max-height: calc(100% - var(--px) * 260); display: flex; flex-direction: column; padding: calc(var(--px) * 18) calc(var(--px) * 20) calc(var(--px) * 16); background: var(--panel); backdrop-filter: blur(16px); border: 1px solid var(--line); border-top: 2px solid var(--acc); transition: opacity 0.2s; }
+#menu.drawer-open .rooms { opacity: 0; pointer-events: none; }
+.rooms .head { display: flex; align-items: center; justify-content: space-between; gap: calc(var(--px) * 12); padding-bottom: calc(var(--px) * 12); border-bottom: 1px solid var(--line); }
+.rooms .head .live { color: var(--ink); }
+.rooms.silent .live::before { background: var(--mute); box-shadow: none; animation: none; }
+.rooms #roomsHost { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: 0.08em; text-transform: none; }
+.rooms .list { display: flex; flex-direction: column; gap: calc(var(--px) * 8); overflow-y: auto; min-height: 0; }
+.rooms .list:not(:empty) { margin-top: calc(var(--px) * 12); }
+.rooms .note { margin: calc(var(--px) * 12) 0 0; line-height: 1.6; letter-spacing: 0.12em; color: var(--mute); }
+button.room { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: calc(var(--px) * 3) calc(var(--px) * 12); width: 100%; padding: calc(var(--px) * 11) calc(var(--px) * 14) calc(var(--px) * 12); text-align: left; text-transform: none; letter-spacing: 0; border-left: 2px solid var(--line2); }
+button.room:hover { border-left-color: var(--acc); }
+button.room.on { border-left-color: var(--acc); background: rgba(79, 216, 196, 0.1); }
+button.room:disabled { cursor: default; opacity: 0.55; }
+button.room .level { font: 600 calc(var(--px) * 25) / 1 var(--f-head); letter-spacing: 0.1em; text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+button.room .mode { justify-self: end; font: 500 calc(var(--px) * 11) var(--f-mono); font-style: normal; letter-spacing: 0.16em; text-transform: uppercase; color: var(--acc-hi); white-space: nowrap; }
+button.room .who, button.room .state { grid-column: 1 / -1; font: 500 calc(var(--px) * 11) var(--f-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+button.room .names { font: 600 calc(var(--px) * 17) / 1.25 var(--f-ui); letter-spacing: 0.03em; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+button.room .state { grid-column: 1; color: var(--mute); }
+button.room .state:empty, button.room .names:empty { display: none; }
+button.room .join { grid-column: 2; grid-row: 3 / span 2; align-self: end; justify-self: end; font: 700 calc(var(--px) * 12) var(--f-mono); font-style: normal; letter-spacing: 0.2em; text-transform: uppercase; color: var(--acc-hi); }
+button.room .join::after { content: " →"; }
+button.room:disabled .join { color: var(--dim); } button.room:disabled .join::after { content: ""; }
 
 .legend { position: absolute; right: calc(var(--px) * 34); bottom: calc(var(--px) * 46); display: flex; flex-direction: column; align-items: flex-end; gap: calc(var(--px) * 9); transition: opacity 0.2s; }
 .legend div { display: flex; align-items: center; gap: calc(var(--px) * 15); }

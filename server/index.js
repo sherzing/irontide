@@ -39,7 +39,8 @@ const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css
 const server = http.createServer(async (req, res) => {
   try {
     let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-    if (p === '/status') { res.writeHead(200, { 'content-type': 'application/json' }); return res.end(JSON.stringify([...rooms.values()].map((r) => ({ room: r.name, mode: r.sim.mode, players: r.clients.size, max: MAX_PLAYERS, level: r.sim.level.id, recommended: recommendedPlayers(r.sim.level) })))); }
+    // the open rooms: a menu's room list reads this every few seconds, also the menu of a page served from somewhere else
+    if (p === '/status') { res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store', 'access-control-allow-origin': '*' }); return res.end(JSON.stringify([...rooms.values()].map((r) => ({ room: r.name, players: r.clients.size, max: MAX_PLAYERS, recommended: recommendedPlayers(r.sim.level), ...r.sim.status() })))); }
     if (p === '/version') { res.writeHead(200, { 'content-type': 'application/json' }); return res.end(JSON.stringify(BUILD)); }
     if (p.endsWith('/')) p += 'index.html';
     const file = normalize(join(DIST, p));

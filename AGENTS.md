@@ -73,6 +73,10 @@ A change is finished when every check its files touch is **green**.
 - **Crews** (`shared/crews.js`) are looks only: the body texture repainted and kit hung on bones
   (`client/src/crewkit.js`). `node scripts/crew-sheet.mjs out.jpg` shows them all, front and back. BLUE's crews
   stay cold-coloured and RED's warm: that is how a team is told apart.
+- **Room list.** The menu lists the server's open rooms from `GET /status` (`client/src/rooms.js`); what a room
+  says of its match comes from `GameSim.status()`. Judge a change with a server running:
+  `node scripts/ui-shot.mjs out http://localhost:<port> rooms` puts players into two rooms, saves the menu and
+  joins one by a click. A server that may not be ours answers too: its text goes in as text, never as HTML.
 - **Training.** `shared/levels/range.js` is a level with `training: true` whose campaign is the course. Its
   `enemies` with `target` set are practice targets: they never shoot and get back up where they stood.
 - **Deaths** are a ragdoll (`client/src/ragdoll.js`): particles on the joints, which the skeleton follows. Judge a

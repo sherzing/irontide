@@ -18,8 +18,11 @@ Set when the server starts. A command-line flag wins over the environment variab
 node server/index.js --port 9000 --mode dm --fill 24 --skill hard
 ```
 
-`GET /status` returns the open rooms as JSON, one object each: `room` (its name), `mode`, `players` (the humans in
-it), `max` (the cap), `level` and `recommended` (the level's suggested size).
+`GET /status` returns the open rooms as JSON, one object each: `room` (its name), `mode`, `level`, `players` (the
+humans in it), `names` (their callsigns), `bots`, `max` (the cap), `recommended` (the level's suggested size) and
+`phase` (`play` or `end`). A match adds `left` (seconds), `score` (`[BLUE, RED]`, or the leader's kills in a
+deathmatch) and `limit`; a co-op room adds `stage` and `stages` instead. Any web page may read it: the menu on
+another host lists this server's rooms when a player names it under Server.
 `GET /version` returns the build: version, commit and build time for a packaged release, `{"version":"dev"}` in a
 source checkout.
 
@@ -35,6 +38,9 @@ An installation made with `install.sh` keeps the ones that were set as `PORT=`, 
 
 Decided by the first player who joins a room name, from the menu's Multiplayer fields. They travel as parameters of
 the WebSocket address `/ws`. Later joiners' values are ignored.
+
+The menu lists the server's open rooms beside these fields, from `GET /status`; a click on one joins it. How often
+it asks (every 3 s, every 15 s while the server does not answer) is `EVERY` and `SLOW` in `client/src/rooms.js`.
 
 | Parameter | Menu field | Meaning |
 | --- | --- | --- |

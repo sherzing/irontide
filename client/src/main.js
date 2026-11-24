@@ -12,6 +12,7 @@ import { Characters } from './characters.js';
 import { Hud } from './hud.js';
 import { Game } from './game.js';
 import { LocalTransport, WsTransport } from './net.js';
+import { RoomList, count } from './rooms.js';
 import { LEVELS, DEFAULT_LEVEL, recommendedPlayers } from '../../shared/levels/index.js';
 import { CREWS, crewsOf } from '../../shared/crews.js';
 import { MAX_PLAYERS } from '../../shared/sim.js';
@@ -37,7 +38,7 @@ const lookString = () => [settings.look.b, settings.look.r, settings.look[settin
 settings.q.bots = Math.max(1, Math.min(MAX_PLAYERS - 1, +settings.q.bots || defaults.q.bots)); settings.m.fill = Math.max(0, Math.min(MAX_PLAYERS, +settings.m.fill || 0));
 const save = () => { try { localStorage.setItem('irontide', JSON.stringify(settings)); } catch { /* ignore */ } };
 const getOpt = (path) => path.split('.').reduce((o, k) => o[k], settings);
-const setOpt = (path, v) => { const ks = path.split('.'), last = ks.pop(); ks.reduce((o, k) => o[k], settings)[last] = v; save(); applySettings(path); refreshUI(); if (path.startsWith('look.')) showCrew(path === 'look.d' ? settings.look[v] : v); if (inMenu && ['mode', 'q.level', 'm.level', 'm.mode'].includes(path)) showLevel(menuLevel()); };
+const setOpt = (path, v) => { const ks = path.split('.'), last = ks.pop(); ks.reduce((o, k) => o[k], settings)[last] = v; save(); applySettings(path); if (path === 'm.server') rooms.moved(); else if (path === 'mode' && v === 'multi') rooms.ask(); refreshUI(); if (path.startsWith('look.')) showCrew(path === 'look.d' ? settings.look[v] : v); if (inMenu && ['mode', 'q.level', 'm.level', 'm.mode'].includes(path)) showLevel(menuLevel()); };
 
 // ---------------------------------------------------------------- engine + world
 const engine = new Engine($('#c'), settings.quality);
@@ -91,6 +92,15 @@ const menuLevel = () => (settings.mode === 'range' ? RANGE_LEVEL : settings.mode
 const showLevel = (id) => { if (current?.level.id !== id) { menuT = 0; ensureLevel(id).catch((e) => menuMsg(e.message || String(e))); } };
 const SKILL = { easy: 'Recruit', normal: 'Regular', hard: 'Veteran' };
 const GO = { range: 'To the range', quick: 'Drop in', campaign: 'Start mission', multi: 'Join room' };
+const MATCH = { dm: 'deathmatch', tdm: 'team deathmatch', campaign: 'co-op' };
+/** The multiplayer server: this host, or the one the menu names. A named one is asked without TLS. */
+function serverAddr() {
+  const named = settings.m.server.trim().replace(/^(https?|wss?):\/\//, '').replace(/\/+$/, '');
+  return { host: named || location.host, ws: `${!named && location.protocol === 'https:' ? 'wss' : 'ws'}://${named || location.host}`, http: named ? `http://${named}` : '' };
+}
+// the open rooms of that server, drawn beside the Multiplayer options; a click on one joins it
+const rooms = new RoomList({ panel: $('#rooms'), url: () => serverAddr().http + '/status', watching: () => inMenu,
+  onJoin: (room) => { setOpt('m.room', room); startMulti(); }, onChange: () => refreshUI() });
 // the sliders go up to the game's cap; the band on each marks the size the level suits
 const SIZE = { 'q.bots': { max: MAX_PLAYERS - 1, others: 1 }, 'm.fill': { max: MAX_PLAYERS, others: 0 } };
 for (const [opt, o] of Object.entries(SIZE)) document.querySelector(`input[data-opt="${opt}"]`).max = o.max;
@@ -103,8 +113,9 @@ function refreshUI() {
   for (const v of document.querySelectorAll('[data-val]')) v.textContent = getOpt(v.dataset.val);
   for (const g of document.querySelectorAll('[data-mode]')) g.classList.toggle('hidden', g.dataset.mode !== settings.mode);
   const q = settings.q, m = settings.m, mode = settings.mode;
+  const open = mode === 'multi' ? rooms.get(m.room || 'public') : null;      // the room the Join button leads to, when it is open already: its match is set
   const lvl = LEVELS[menuLevel()], rec = recommendedPlayers(lvl);
-  const players = mode === 'multi' ? m.fill : q.bots + 1, crowded = (mode === 'quick' || mode === 'multi') && players > rec.max;
+  const players = mode === 'multi' ? m.fill : q.bots + 1, crowded = (mode === 'quick' || (mode === 'multi' && !open)) && players > rec.max;
   for (const [opt, o] of Object.entries(SIZE)) {
     const i = document.querySelector(`input[data-opt="${opt}"]`), r = recommendedPlayers(LEVELS[opt === 'q.bots' ? q.level : m.level]);
     const at = (n) => Math.max(0, Math.min(100, ((n - o.others - i.min) / (i.max - i.min)) * 100)) + '%';
@@ -112,15 +123,18 @@ function refreshUI() {
   }
   $('#tbLevel').textContent = lvl.name; $('#tbBlurb').textContent = [lvl.blurb, mode === 'range' ? '' : `${rec.min}–${rec.max} players`].filter(Boolean).join(' · ');
   $('#kOp').textContent = mode === 'range' ? 'Training' : 'Operation ' + camp.title; $('#kSite').textContent = lvl.name + ' sector';
-  $('#goLabel').textContent = GO[mode];
+  $('#goLabel').textContent = mode === 'multi' && rooms.heard && !open ? 'Open room' : GO[mode];
   $('#pitch').textContent = mode === 'range' ? course.brief : mode === 'campaign' ? camp.brief
     : mode === 'multi' ? `Up to ${MAX_PLAYERS} players share a room. Empty slots are held by bots until someone takes them.`
     : lvl.pitch || `Live rounds on ${lvl.name}. Set the opposition and drop in.`;
-  const b = (t) => `<b>${String(t).replace(/[&<>]/g, '')}</b>`;
+  const txt = (t) => String(t).replace(/[&<>]/g, ''), b = (t) => `<b>${txt(t)}</b>`;
   $('#summary').innerHTML = mode === 'range' ? `${b('Target practice')} · solo · nobody shoots back`
     : mode === 'campaign' ? `${b(camp.stages.length + ' objectives')} · solo · ${SKILL[settings.c.skill]} opposition`
-    : mode === 'multi' ? `Room ${b(m.room || 'public')} · ${{ dm: 'deathmatch', tdm: 'team deathmatch', campaign: 'co-op' }[m.mode]} if new · filled to ${m.fill} · ${MAX_PLAYERS} max`
+    : open ? `Room ${b(open.room)} · ${MATCH[open.mode]} on ${txt(LEVELS[open.level]?.name || open.level)} · ${open.players} playing`
+    : mode === 'multi' ? `Room ${b(m.room || 'public')} · ${rooms.heard ? 'new' : 'if new'} · ${MATCH[m.mode]} on ${lvl.name}${m.mode === 'campaign' ? '' : ` · filled to ${m.fill}`}`
     : `${b(q.mode === 'tdm' ? 'Team deathmatch' : 'Deathmatch')} · ${q.bots} bot${q.bots === 1 ? '' : 's'} · ${SKILL[q.skill]} · ${lvl.name}`;
+  rooms.mark(m.room || 'public'); $('#multiOpts').classList.toggle('joining', !!open); $('#roomsHost').textContent = serverAddr().host;
+  $('#playing').textContent = rooms.playing || ''; $('#playing').title = rooms.playing ? `${count(rooms.playing, 'player')} in open rooms` : '';
   if (crowded) $('#summary').insertAdjacentHTML('beforeend', `<span class="warn">Crowded · ${lvl.name} plays best with ${rec.min}–${rec.max} players</span>`);
 }
 const menuMsg = (text, info = false) => { const el = $('#menuMsg'); el.textContent = text || ''; el.classList.toggle('info', info); };
@@ -154,6 +168,7 @@ function toMenu(msg) {
   engine.camera.fov = 55; engine.camera.updateProjectionMatrix();
   menuMsg(msg || '');
   showLevel(menuLevel());
+  rooms.ask();
 }
 async function play(makeTransport) {
   audio.start();
@@ -170,11 +185,8 @@ const startQuick = () => playLocal({ mode: settings.q.mode, level: settings.q.le
 const startCampaign = () => playLocal({ mode: 'campaign', level: CAMPAIGN_LEVEL, skill: settings.c.skill });
 const startRange = () => playLocal({ mode: 'campaign', level: RANGE_LEVEL });
 const startMulti = () => { menuMsg('Connecting…', true); play(async () => {
-  let host = settings.m.server.trim() || location.host;
-  host = host.replace(/^(https?|wss?):\/\//, '').replace(/\/+$/, '');
-  const proto = location.protocol === 'https:' && !settings.m.server.trim() ? 'wss' : 'ws';
   const q = new URLSearchParams({ name: settings.name, room: settings.m.room || 'public', mode: settings.m.mode, fill: settings.m.fill, level: settings.m.level, look: lookString() });
-  const t = new WsTransport(`${proto}://${host}/ws?${q}`); await t.ready; return t;
+  const t = new WsTransport(`${serverAddr().ws}/ws?${q}`); await t.ready; return t;
 }); };
 $('#go').onclick = () => ({ range: startRange, quick: startQuick, campaign: startCampaign, multi: startMulti })[settings.mode]();
 $('#resume').onclick = () => { $('#pause').classList.add('hidden'); game.setPaused(false); engine.canvas.requestPointerLock?.()?.catch?.(() => {}); };
@@ -196,6 +208,7 @@ vm.root.visible = false;
 await ensureLevel(menuLevel());
 refreshUI();
 $('#menu').classList.remove('hidden');
+rooms.ask();
 engine.camera.fov = 55; engine.camera.updateProjectionMatrix();
 
 const clock = new THREE.Clock();

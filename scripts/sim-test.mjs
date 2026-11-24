@@ -67,6 +67,10 @@ console.log('  top:', [...sim.ents.values()].sort((a, b) => b.kills - a.kills).s
 sim = mk({ mode: 'tdm', fill: 16, skill: 'normal', scoreLimit: 20 }); sim.addPlayer(1, 'T'); r = run(sim, 900);
 console.log(`  tdm 16: ${(r.ticks * TICK).toFixed(0)} s, score ${sim.teamScore.slice(1).join(' : ')}`, sim.phase === 'end' ? 'OK' : '');
 if (sim.phase !== 'end') fail('the team match did not finish');
+// what a room list is told about that match
+const told = sim.status(), right = told.names.join() === 'T' && told.bots === 15 && told.phase === 'end' && told.score.join() === sim.teamScore.slice(1).join() && told.limit === 20 && told.level === DEFAULT_LEVEL && told.mode === 'tdm';
+console.log(`  its status: ${told.names.length} player, ${told.bots} bots, ${told.phase}, ${told.score.join(' : ')} of ${told.limit}`, right ? 'OK' : '');
+if (!right) fail(`status of the team match: ${JSON.stringify(told)}`);
 // campaign with an invulnerable ghost that walks the objectives and deletes enemies
 sim = mk({ mode: 'campaign', skill: 'normal' }, true); sim.addPlayer(1, 'Ghost');
 const me = sim.ents.get(1); let ticks = 0;
