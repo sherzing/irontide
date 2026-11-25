@@ -1,6 +1,7 @@
 // Protocol smoke test against a running server: node scripts/net-test.mjs [ws://localhost:8090]
 import WebSocket from 'ws';
 import { MAX_PLAYERS } from '../shared/sim.js';
+import { leanBits, leanOf } from '../shared/collision.js';
 const base = process.argv[2] || 'ws://localhost:8090';
 const connect = (name, room = 'test') => new Promise((res, rej) => {
   const ws = new WebSocket(`${base}/ws?name=${name}&room=${room}&mode=tdm&fill=6`), c = { ws, name, msgs: {}, hi: null, snap: null, closed: null };
@@ -10,11 +11,11 @@ const connect = (name, room = 'test') => new Promise((res, rej) => {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const a = await connect('Alice'), b = await connect('Bob');
 console.log('hi:', a.hi.mode, a.hi.level, 'roster', a.hi.ents.length, '| teams', a.hi.ents.find((e) => e.id === a.hi.id).team, b.hi.ents.find((e) => e.id === b.hi.id).team);
-a.ws.send(JSON.stringify({ t: 'st', p: [1, 0, 2], yw: 0.5, pt: 0, f: 2, w: 'pistol' }));
+a.ws.send(JSON.stringify({ t: 'st', p: [1, 0, 2], yw: 0.5, pt: 0, f: 2 | leanBits(-1), w: 'pistol' }));      // walking, leaning all the way left
 a.ws.send(JSON.stringify({ t: 'chat', s: 'hello' }));
 await sleep(700);
 const sa = b.snap.s.find((s) => s[0] === a.hi.id);
-console.log('bob sees alice at', sa.slice(1, 4), 'weapon', sa[7], '| entities in snapshot', b.snap.s.length, '| bob msgs', JSON.stringify(b.msgs));
+console.log('bob sees alice at', sa.slice(1, 4), 'weapon', sa[7], '| leaning left:', leanOf(sa[6]) === -1 && (sa[6] & 2) === 2, '| entities in snapshot', b.snap.s.length, '| bob msgs', JSON.stringify(b.msgs));
 const status = await (await fetch(base.replace('ws', 'http') + '/status')).json(); console.log('status', JSON.stringify(status), '| names its players:', status.find((r) => r.room === 'test')?.names?.join() === 'Alice,Bob');
 // fill the room to the cap and try one more
 const more = await Promise.all(Array.from({ length: MAX_PLAYERS - 2 }, (_, i) => connect('P' + i)));

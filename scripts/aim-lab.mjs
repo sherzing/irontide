@@ -1,24 +1,30 @@
 // Does a shot go where the player aims, and does it hit what they see? Three looks at the running game.
 //   node scripts/aim-lab.mjs volumes <out.jpg>   the soldier in each stance from three sides, with what a shot would hit painted over him
 //                                                (red head, yellow body, blue limbs; magenta = drawn but a bullet passes), and the same in numbers
+//   node scripts/aim-lab.mjs lean <out.jpg>      the same for a soldier who leans (Q, E), and where his head is against where the leaning player's view is:
+//                                                the two must agree, or a player shoots from where nobody can hit him
 //   node scripts/aim-lab.mjs sights <out.png>    each weapon with its sights up, 3x, and a green cross on the screen's centre, where the shot goes
 //   node scripts/aim-lab.mjs lag                 how far a shot trails the view while the view turns: 0 is right
 // Needs the dev server: npx vite --port 5177 (BASE overrides the address).
 import { launch } from './browser.mjs';
 import { writeFileSync } from 'node:fs';
+import { LEAN, leanBits, leanOf } from '../shared/collision.js';
 const [mode, out] = process.argv.slice(2);
 const base = process.env.BASE || 'http://127.0.0.1:5177';
 const { browser, page, errors } = await launch();
-await page.goto(`${base}/?auto=dm&bots=1&level=drydock&dr=0&q=${mode === 'volumes' ? 'low' : 'medium'}`);
+const body = mode === 'volumes' || mode === 'lean', R = leanBits(1), L = leanBits(-1);
+const STANCES = mode === 'lean' ? [['standing', 0, 0], ['leaning right', 0, R], ['leaning left', 0, L], ['leaning right, walking', 1.7, R], ['crouching', 0, 1], ['crouched, leaning right', 0, 1 | R], ['crouched, leaning left', 0, 1 | L]]
+  : [['standing', 0, 0], ['walking', 1.7, 0], ['running', 5.5, 0], ['crouching', 0, 1], ['crouched, moving', 2.2, 1]];
+await page.goto(`${base}/?auto=dm&bots=1&level=drydock&dr=0&q=${body ? 'low' : 'medium'}`);
 await page.waitForFunction(() => window.__irontide?.game.me?.alive && window.__irontide.chars.map.size > 0);
 await page.waitForTimeout(800);
-const res = await page.evaluate(async (mode) => {
+const res = await page.evaluate(async ({ mode, body, states }) => {
   const { game, engine, chars } = window.__irontide, sim = game.net.sim, me = game.me, rad = Math.PI / 180;
   const wait = (s) => new Promise((r) => setTimeout(r, s * 1000)), now = () => performance.now() / 1000;
   game.net.paused = true;                                   // the match stands still: only this script moves anything
   let after = null; const render = engine.render.bind(engine), V3 = engine.camera.position.constructor;
 
-  if (mode === 'volumes') {
+  if (body) {
     const c = [...chars.map.values()][0];
     let best = -1, x, z;                                    // the most open floor of a few hundred tries
     for (let i = 0; i < 600; i++) {
@@ -39,15 +45,15 @@ const res = await page.evaluate(async (mode) => {
       c.body.root.visible = false; render(0); B.getContext('2d').drawImage(gl, 0, 0); c.body.root.visible = true;
       cam.updateMatrixWorld(); const f = after; after = null; f();
     };
-    const states = [['standing', 0, 0], ['walking', 1.7, 0], ['running', 5.5, 0], ['crouching', 0, 1], ['crouched, moving', 2.2, 1]], views = [['front', 0], ['side', 90], ['back', 180]];
+    const views = [['front', 0], ['side', 90], ['back', 180]];
     const cw = 320, ch = 330, sheet = document.createElement('canvas'); sheet.width = cw * states.length; sheet.height = ch * views.length;
     const g = sheet.getContext('2d'), rows = [];
-    for (const [vi, [view, deg]] of views.entries()) for (const [si, [name, speed, crouch]] of states.entries()) {
-      const face = 90 * rad, yaw = -face, fx = -Math.sin(yaw), fz = -Math.cos(yaw), n = { seen: 0, hit: 0, both: 0, head: 0, headHit: 0, headAsHead: 0 };
+    for (const [vi, [view, deg]] of views.entries()) for (const [si, [name, speed, flags]] of states.entries()) {
+      const face = 90 * rad, yaw = -face, fx = -Math.sin(yaw), fz = -Math.cos(yaw), n = { seen: 0, hit: 0, both: 0, head: 0, headHit: 0, headAsHead: 0 }, at = { side: 0, up: 0 };
       for (let k = 0; k < (speed ? 6 : 1); k++) {
         const t0 = now() - game.interp, lead = 0.75 + k * 0.07, sx = x - fx * speed * lead, sz = z - fz * speed * lead;      // he is on the open spot when the picture is taken
-        c.push(t0, [c.id, sx, y, sz, yaw, 0, crouch, 0, 100, 1]);
-        c.buf = [{ t: t0, x: sx, y, z: sz, yaw, pitch: 0, flags: crouch }, { t: t0 + 9, x: sx + fx * speed * 9, y, z: sz + fz * speed * 9, yaw, pitch: 0, flags: crouch }];
+        c.push(t0, [c.id, sx, y, sz, yaw, 0, flags, 0, 100, 1]);
+        c.buf = [{ t: t0, x: sx, y, z: sz, yaw, pitch: 0, flags }, { t: t0 + 9, x: sx + fx * speed * 9, y, z: sz + fz * speed * 9, yaw, pitch: 0, flags }];
         c.placed = false; va = face + deg * rad; c.body.gun.visible = false;
         await wait(lead);
         await new Promise((r) => { after = r; });
@@ -55,7 +61,9 @@ const res = await page.evaluate(async (mode) => {
         let x0 = W, x1 = 0, y0 = H, y1 = 0;                  // his box on the screen
         for (const dx of [-1.1, 1.1]) for (const dy of [0, 2.05]) for (const dz of [-1.1, 1.1]) { p.set(c.pos.x + dx, c.pos.y + dy, c.pos.z + dz).project(cam); const X = (p.x * 0.5 + 0.5) * W, Y = (-p.y * 0.5 + 0.5) * H; x0 = Math.min(x0, X); x1 = Math.max(x1, X); y0 = Math.min(y0, Y); y1 = Math.max(y1, Y); }
         x0 = Math.max(0, Math.floor(x0)); x1 = Math.min(W - 1, Math.ceil(x1)); y0 = Math.max(0, Math.floor(y0)); y1 = Math.min(H - 1, Math.ceil(y1));
-        const head = new V3(0, 10, 1.5).applyMatrix4(c.body.bones.Head.matrixWorld), top = head.clone(); top.y += 0.105; head.project(cam); top.project(cam);
+        const head = new V3(0, 10, 1.5).applyMatrix4(c.body.bones.Head.matrixWorld), top = head.clone(); top.y += 0.105;
+        at.side += ((head.x - c.pos.x) * Math.cos(yaw) - (head.z - c.pos.z) * Math.sin(yaw)) / (speed ? 6 : 1); at.up += (head.y - c.pos.y) / (speed ? 6 : 1);      // the head's middle: to his right of his feet, and above them
+        head.project(cam); top.project(cam);
         const hx = (head.x * 0.5 + 0.5) * W, hy = (-head.y * 0.5 + 0.5) * H, hr = Math.abs(top.y - head.y) * 0.5 * H;
         const bw = x1 - x0 + 1, bh = y1 - y0 + 1, over = k ? null : new ImageData(bw, bh);
         for (let Y = y0; Y <= y1; Y++) for (let X = x0; X <= x1; X++) {
@@ -76,7 +84,7 @@ const res = await page.evaluate(async (mode) => {
         }
       }
       const pc = (v, d) => (d ? Math.round(v / d * 100) : 0);
-      rows.push({ stance: name, from: view, 'of the soldier drawn, a shot hits %': pc(n.both, n.seen), 'of what a shot hits, nothing is drawn there %': pc(n.hit - n.both, n.hit), 'of the head drawn, counts as a head shot %': pc(n.headAsHead, n.head) });
+      rows.push({ stance: name, from: view, 'of the soldier drawn, a shot hits %': pc(n.both, n.seen), 'of what a shot hits, nothing is drawn there %': pc(n.hit - n.both, n.hit), 'of the head drawn, counts as a head shot %': pc(n.headAsHead, n.head), flags, side: at.side, up: at.up });
     }
     return { rows, img: sheet.toDataURL('image/jpeg', 0.9) };
   }
@@ -113,8 +121,18 @@ const res = await page.evaluate(async (mode) => {
     me.ammo.marksman.mag = 5;
   }
   return { rows };
-}, mode);
-if (res.rows) console.table(res.rows);
+}, { mode, body, states: STANCES });
+if (mode === 'lean') {
+  // The leaning player's view is LEAN.reach to the side of his feet and LEAN.drop lower than upright. The soldier others see must have his head there.
+  const front = res.rows.filter((r) => r.from === 'front'), upright = (r) => front.find((u) => (u.flags & 1) === (r.flags & 1) && !leanOf(u.flags)), cm = (v) => Math.round(v * 100);
+  const table = front.filter((r) => leanOf(r.flags)).map((r) => {
+    const view = leanOf(r.flags) * LEAN.reach, lower = upright(r).up - r.up, off = Math.abs(r.side - upright(r).side - view);
+    return { stance: r.stance, 'head to his right, cm': cm(r.side - upright(r).side), 'the view, cm': cm(view), 'head lower than upright, cm': cm(lower), 'the view lower, cm': cm(LEAN.drop * (r.flags & 1 ? 1.05 / 1.62 : 1)), 'apart sideways, cm': cm(off), '': off <= 0.04 ? 'OK' : 'FAIL' };
+  });
+  console.table(table);
+  if (table.some((r) => r[''] !== 'OK')) { console.log('FAIL: the head of a leaning soldier is more than 4 cm to the side of the leaning player\'s view'); process.exitCode = 1; }
+}
+if (res.rows) console.table(res.rows.map(({ flags, side, up, ...r }) => r));
 if (res.img && out) writeFileSync(out, Buffer.from(res.img.split(',')[1], 'base64'));
 console.log('errors:', errors.length);
 await browser.close();

@@ -3,6 +3,7 @@
 // Exit code 1 if a check fails.  MAP=1 also prints each level's walkable floor as text.
 import { GameSim, TICK, MAX_PLAYERS } from '../shared/sim.js';
 import { LEVELS, DEFAULT_LEVEL, recommendedPlayers } from '../shared/levels/index.js';
+import { PLAYER, LEAN, leanBits, leanShift } from '../shared/collision.js';
 
 const count = {};
 const tally = (m) => { count[m.t] = (count[m.t] || 0) + 1; };
@@ -71,6 +72,44 @@ if (sim.phase !== 'end') fail('the team match did not finish');
 const told = sim.status(), right = told.names.join() === 'T' && told.bots === 15 && told.phase === 'end' && told.score.join() === sim.teamScore.slice(1).join() && told.limit === 20 && told.level === DEFAULT_LEVEL && told.mode === 'tdm';
 console.log(`  its status: ${told.names.length} player, ${told.bots} bots, ${told.phase}, ${told.score.join(' : ')} of ${told.limit}`, right ? 'OK' : '');
 if (!right) fail(`status of the team match: ${JSON.stringify(told)}`);
+// A player who leans out of cover (Q, E) shows his head and hides the rest. A bot must see that head and be able to hit it;
+// while he stands upright behind the same cover it must see nothing.
+{
+  const s = mk({ mode: 'dm', fill: 2, skill: 'hard', scoreLimit: 1e9, timeLimit: 1e9 }); s.addPlayer(1, 'Peek');
+  const p = s.ents.get(1), bot = [...s.ents.values()].find((e) => e.bot), w = s.world, nav = s.nav, R = leanBits(1);
+  let spot = null;      // where he stands and looks, and a place 8 to 16 m ahead from which only the leaning head is in sight
+  for (let i = 0; i < nav.open.length && !spot; i += 3) {
+    const c = nav.center(nav.open[i]), y = w.floorAt(c.x, 1.5, c.z, 3) ?? 0;
+    if (w.blocked(c.x, y + 0.02, c.z, 1.8)) continue;
+    for (let k = 0; k < 8 && !spot; k++) {
+      const yaw = k * Math.PI / 4, [lx, lz] = leanShift(yaw, R);
+      for (let d = 8; d <= 16 && !spot; d += 2) {
+        const bx = c.x + lx - Math.sin(yaw) * d, bz = c.z + lz - Math.cos(yaw) * d, sees = (x, h, z) => w.los(bx, y + PLAYER.eye, bz, x, y + h, z);
+        if (!nav.walkable(bx, bz) || w.blocked(bx, y + 0.02, bz, 1.8) || Math.abs((w.floorAt(bx, 1.5, bz, 3) ?? 99) - y) > 0.05) continue;
+        const hidden = [-0.75, 0, 0.75].every((o) => !sees(c.x + lx * o, 1.2, c.z + lz * o) && !sees(c.x + lx * o, 1.6, c.z + lz * o));      // upright, he is out of sight from shoulder to shoulder
+        if (hidden && sees(c.x + lx, 1.6, c.z + lz)) spot = { x: c.x, y, z: c.z, yaw, bx, bz, d };
+      }
+    }
+  }
+  if (!spot) fail('found no corner to lean round on the default level');
+  else {
+    bot.ai.mode = 'hold'; bot.yaw = Math.atan2(-(spot.x - spot.bx), -(spot.z - spot.bz));
+    const stand = (flags, seconds) => {
+      let seen = 0, hurt = 0;
+      for (let t = 0; t < 20 * seconds && !hurt; t++) {
+        s.handle(1, { t: 'st', p: [spot.x, spot.y, spot.z], yw: spot.yaw, pt: 0, f: flags, w: 'carbine' });
+        bot.x = spot.bx; bot.y = spot.y; bot.z = spot.bz;
+        s.tick(TICK);
+        if (bot.ai.visible && bot.ai.target === 1) seen++;
+        if (p.hp < 100 || !p.alive) hurt++;
+      }
+      return { seen, hurt };
+    };
+    const up = stand(0, 15), out = stand(R, 120), ok = !up.seen && !up.hurt && out.seen && out.hurt;
+    console.log(`  a bot ${spot.d} m from a corner: the player upright behind it is seen for ${up.seen} ticks and hit ${up.hurt} times; leaning out he is ${out.seen ? 'seen' : 'not seen'} and ${out.hurt ? 'hit' : 'not hit'}`, ok ? 'OK' : '');
+    if (!ok) fail(`leaning: upright seen ${up.seen}, hit ${up.hurt}; leaning seen ${out.seen}, hit ${out.hurt}`);
+  }
+}
 // campaign with an invulnerable ghost that walks the objectives and deletes enemies
 sim = mk({ mode: 'campaign', skill: 'normal' }, true); sim.addPlayer(1, 'Ghost');
 const me = sim.ents.get(1); let ticks = 0;

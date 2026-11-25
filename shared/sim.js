@@ -1,6 +1,6 @@
 // Authoritative match simulation. Transport-agnostic: the browser runs it in-process for
 // solo play (quick game / campaign) and server/index.js runs it per room for multiplayer.
-import { World, PLAYER, hitCharacter, CROUCH_SCALE } from './collision.js';
+import { World, PLAYER, hitCharacter, leanShift, CROUCH_SCALE } from './collision.js';
 import { NavGrid } from './nav.js';
 import { WEAPONS, WEAPON_ORDER, damageAt } from './weapons.js';
 import { levelColliders } from './props.js';
@@ -224,7 +224,8 @@ export class GameSim {
       let best = wh ? wh.t : w.range, victim = null, zone = null;
       for (const t of this.ents.values()) {
         if (!t.alive || !this.hostile(e, t)) continue;
-        const h = hitCharacter(o[0], o[1], o[2], d[0], d[1], d[2], best, t.x, t.y, t.z, t.flags & 1);
+        const lean = leanShift(t.yaw, t.flags);
+        const h = hitCharacter(o[0], o[1], o[2], d[0], d[1], d[2], best, t.x, t.y, t.z, t.flags & 1, lean[0], lean[1]);
         if (h) { best = h.t; victim = t; zone = h.zone; }
       }
       ends.push([r2(o[0] + d[0] * best), r2(o[1] + d[1] * best), r2(o[2] + d[2] * best)]);

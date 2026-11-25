@@ -1,6 +1,6 @@
 // A play session: local player controller, weapons, and the client side of the sim protocol.
 import * as THREE from 'three';
-import { World, PLAYER } from '../../shared/collision.js';
+import { World, PLAYER, LEAN, leanBits } from '../../shared/collision.js';
 import { levelColliders } from '../../shared/props.js';
 import { WEAPONS, WEAPON_ORDER, spreadOf, newRecoil, kick, recoilStep, recoilPulled } from '../../shared/weapons.js';
 import { MAX_PLAYERS } from '../../shared/sim.js';
@@ -37,6 +37,7 @@ export class Game {
       id, alive: false, hp: 100, team: 0, pos: V(), vel: V(), yaw: 0, pitch: 0, grounded: true, crouch: false, eye: PLAYER.eye, stepOff: 0,
       weapon: 'carbine', ammo: {}, reload: null, nextFire: 0, rec: newRecoil(), bolt: -1, stepDist: 0, surf: 'concrete',
       deadT: 0, killer: '', use: false, lastShot: -9, shake: 0, roll: 0, bob: 0, fov: this.settings.fov,
+      lean: 0, leanOff: 0, airT: 0,                         // lean: -1 (left) to 1 (right), where the keys have it; leanOff: metres the head is to the right; airT: seconds off the ground
     };
     this.refill();
     this.vm.setWeapon('carbine'); this.vm.root.visible = true;
@@ -104,7 +105,7 @@ export class Game {
       }
       case 'spawn': {
         if (!me || m.id !== me.id) break;
-        me.pos.set(m.p[0], m.p[1], m.p[2]); me.vel.set(0, 0, 0); me.yaw = m.yw; me.pitch = 0; me.alive = true; me.hp = 100; me.crouch = false; me.reload = null; me.bolt = -1;
+        me.pos.set(m.p[0], m.p[1], m.p[2]); me.vel.set(0, 0, 0); me.yaw = m.yw; me.pitch = 0; me.alive = true; me.hp = 100; me.crouch = false; me.lean = me.leanOff = 0; me.reload = null; me.bolt = -1;
         me.deadT = 0; me.rec = newRecoil();
         if (!this.obj) this.refill(); else for (const k of WEAPON_ORDER) { const a = me.ammo[k]; a.mag = WEAPONS[k].mag; a.res = Math.max(a.res, WEAPONS[k].mag * 2); }
         this.vm.setWeapon(me.weapon); this.hud.death(null); this.engine.hurt = 0;
@@ -128,7 +129,7 @@ export class Game {
         this.hud.killfeed(k?.name || '?', v?.name || '?', m.w, m.hs, mine, m.by === m.id);
         this.chars.get(m.id)?.die(m.by === m.id ? null : me && m.by === me.id ? me.pos : this.chars.get(m.by)?.pos, m.w, m.hs);
         if (me && m.id === me.id) {
-          me.alive = false; me.deadT = 0; me.killer = m.by === m.id ? '' : k?.name || ''; me.reload = null; this.audio.ui('death'); this.mouse.l = this.mouse.r = false;
+          me.alive = false; me.deadT = 0; me.lean = 0; me.killer = m.by === m.id ? '' : k?.name || ''; me.reload = null; this.audio.ui('death'); this.mouse.l = this.mouse.r = false;
           // which way the player goes down: away from the shot, as far as there is room, onto either side
           const from = m.by === m.id ? null : this.chars.get(m.by)?.pos, dx = from ? me.pos.x - from.x : 0, dz = from ? me.pos.z - from.z : 0, l = Math.hypot(dx, dz) || 1;
           const wall = from && this.world.raycast(me.pos.x, me.pos.y + 0.3, me.pos.z, dx / l, 0, dz / l, 1, 'solid'), room = from ? clamp((wall ? wall.t : 1) - 0.35, 0, 0.5) : 0;
@@ -205,6 +206,16 @@ export class Game {
     if (a.mag >= w.mag || a.res <= 0) return;
     me.reload = { t: 0, dur: w.reload, cues: this.vm.reloadCues() }; me.bolt = -1; this.dropAim();
   }
+  /** Metres the head can go to the side (side: 1 right, -1 left) before something is in its way. */
+  leanRoom(side) {
+    const me = this.me, sy = Math.sin(me.yaw), cy = Math.cos(me.yaw), y = me.pos.y + me.eye - 0.06;
+    let free = LEAN.reach + LEAN.pad;
+    for (const a of [0, 0.13, -0.13]) {                      // the middle of the head, its front and its back
+      const x = me.pos.x - sy * a, z = me.pos.z - cy * a;
+      for (const kind of ['solid', 'sight']) { const h = this.world.raycast(x, y, z, cy * side, 0, -sy * side, free, kind); if (h) free = h.t; }
+    }
+    return Math.max(0, free - LEAN.pad);
+  }
   tryFire(now) {
     const me = this.me, w = WEAPONS[me.weapon], a = me.ammo[me.weapon];
     if (me.reload || this.vm.drawT < 1 || now < me.nextFire || me.bolt >= 0) return;
@@ -274,7 +285,9 @@ export class Game {
       const w = WEAPONS[me.weapon];
       this.adsWanted = adsHeld && !me.reload && this.vm.drawT > 0.6;
       const sprint = !frozen && this.key('ShiftLeft') && f > 0 && !this.adsWanted && !me.crouch && !me.reload && now - me.lastShot > 0.25;
-      const max = me.crouch ? 2.3 : this.adsWanted ? 2.9 : sprint ? 6.7 : 4.6;
+      // leaning (Q, E): not in a sprint and not in the air, and at a walk
+      const leanTo = frozen || sprint || me.airT > 0.15 ? 0 : (this.key('KeyE') ? 1 : 0) - (this.key('KeyQ') ? 1 : 0);
+      const max = me.crouch ? 2.3 : this.adsWanted || leanTo ? 2.9 : sprint ? 6.7 : 4.6;
       const v = me.vel;
       if (me.grounded) {
         const sp = Math.hypot(v.x, v.z);
@@ -289,12 +302,20 @@ export class Game {
       const wasG = me.grounded, vyBefore = v.y, yBefore = me.pos.y;
       const res = this.world.moveCharacter(me.pos, v, dt, me.crouch ? PLAYER.crouchHeight : PLAYER.height, wasG);
       me.grounded = res.grounded; if (res.surf) me.surf = res.surf;
+      me.airT = me.grounded ? 0 : me.airT + dt;
       if (wasG && me.grounded && me.pos.y - yBefore > 0.06) me.stepOff -= me.pos.y - yBefore;       // smooth step-ups
       if (!wasG && me.grounded && vyBefore < -5) { this.vm.landT = Math.min(1.5, -vyBefore / 9); me.shake += 0.15; this.audio.step(me.surf, null, 1.6); }
       me.stepOff += (0 - me.stepOff) * Math.min(1, dt * 14);
       const speed = Math.hypot(v.x, v.z);
       if (me.grounded) { me.stepDist += speed * dt; const stride = sprint ? 2.5 : 2.0; if (me.stepDist > stride) { me.stepDist = 0; this.audio.step(me.surf, null, me.crouch ? 0.4 : sprint ? 1.2 : 0.8); } }
       me.eye += ((me.crouch ? PLAYER.crouchEye : PLAYER.eye) - me.eye) * Math.min(1, dt * 12);
+      // the head follows the keys to the side, eased, and stops short of whatever is beside it
+      {
+        const step = dt / LEAN.time, k = Math.abs(me.lean = clamp(leanTo, me.lean - step, me.lean + step)), grow = LEAN.reach * step * 1.6;
+        let off = clamp(Math.sign(me.lean) * k * k * (3 - 2 * k) * LEAN.reach, me.leanOff - grow, me.leanOff + grow);
+        if (off) off = Math.sign(off) * Math.min(Math.abs(off), this.leanRoom(Math.sign(off)));
+        me.leanOff = off;
+      }
 
       // ---- weapon logic
       if (me.reload) {
@@ -313,14 +334,15 @@ export class Game {
       const bobY = Math.sin(me.bob * 2) * 0.012 * Math.min(1, speed / 4.6) * (1 - this.vm.adsT * 0.7);
       me.shake = Math.max(0, me.shake - dt * 4);
       const sh = me.shake * me.shake * 0.012, shp = (Math.random() - 0.5) * sh, shy = (Math.random() - 0.5) * sh;
-      cam.position.set(me.pos.x, me.pos.y + me.eye + me.stepOff + bobY - this.vm.landT * 0.05, me.pos.z);
-      cam.rotation.set(me.pitch + shp, me.yaw + shy, me.roll);
+      const lean = me.leanOff / LEAN.reach, roll = me.roll - LEAN.roll * lean;
+      cam.position.set(me.pos.x + cy * me.leanOff, me.pos.y + me.eye + me.stepOff + bobY - this.vm.landT * 0.05 - LEAN.drop * Math.abs(lean) * me.eye / PLAYER.eye, me.pos.z - sy * me.leanOff);
+      cam.rotation.set(me.pitch + shp, me.yaw + shy, roll);
       if (Math.abs(cam.fov - me.fov) > 0.01) { cam.fov = me.fov; cam.updateProjectionMatrix(); }
       if (fireHeld && !this.ended) this.tryFire(now);
       this.firePressed = false;
       // recoil: a shot's kick lands over the next frames and comes back once the trigger rests
       const [kp, ky] = recoilStep(w, me.rec, dt, now - me.lastShot);
-      if (kp || ky) { me.pitch = clamp(me.pitch + kp, -1.5, 1.5); me.yaw += ky; cam.rotation.set(me.pitch + shp, me.yaw + shy, me.roll); }
+      if (kp || ky) { me.pitch = clamp(me.pitch + kp, -1.5, 1.5); me.yaw += ky; cam.rotation.set(me.pitch + shp, me.yaw + shy, roll); }
       this.vm.update({ dt, speed, grounded: me.grounded, ads: this.adsWanted, sprint, look: this.look, reload: me.reload ? me.reload.t / me.reload.dur : -1, bolt: me.bolt, hidden: this.scoped });
       this.look.x = this.look.y = 0;
 
@@ -330,7 +352,7 @@ export class Game {
       if (this.sendT >= 0.05) {
         this.sendT = 0;
         const r2 = (x) => Math.round(x * 100) / 100;
-        this.net.send({ t: 'st', p: [r2(me.pos.x), r2(me.pos.y), r2(me.pos.z)], yw: Math.round(me.yaw * 1000) / 1000, pt: Math.round(me.pitch * 1000) / 1000, f: (me.crouch ? 1 : 0) | (speed > 0.6 ? 2 : 0) | (sprint ? 4 : 0) | (me.grounded ? 0 : 8) | (this.adsWanted ? 16 : 0), w: me.weapon });
+        this.net.send({ t: 'st', p: [r2(me.pos.x), r2(me.pos.y), r2(me.pos.z)], yw: Math.round(me.yaw * 1000) / 1000, pt: Math.round(me.pitch * 1000) / 1000, f: (me.crouch ? 1 : 0) | (speed > 0.6 ? 2 : 0) | (sprint ? 4 : 0) | (me.grounded ? 0 : 8) | (this.adsWanted ? 16 : 0) | leanBits(lean), w: me.weapon });
       }
       // ---- hud
       const a = me.ammo[me.weapon];
@@ -342,7 +364,8 @@ export class Game {
       // death camera: the legs go, the head comes down faster and faster and lands on its side with a small bounce
       me.deadT += dt; this.engine.scope = 0;
       const f = me.fall || { x: 0, z: 0, side: 1 }, t = me.deadT, k = Math.min(1, t / 0.55), down = k * k, after = Math.max(0, t - 0.55), bounce = Math.exp(-after * 9) * Math.abs(Math.sin(after * 20)) * (t > 0.55 ? 0.05 : 0);
-      cam.position.set(me.pos.x + f.x * down, me.pos.y + 0.17 + (me.eye - 0.17) * (1 - down) + bounce, me.pos.z + f.z * down);
+      const side = me.leanOff *= Math.max(0, 1 - dt * 8);      // killed leaning: the head falls from where it was
+      cam.position.set(me.pos.x + f.x * down + Math.cos(me.yaw) * side, me.pos.y + 0.17 + (me.eye - 0.17) * (1 - down) + bounce, me.pos.z + f.z * down - Math.sin(me.yaw) * side);
       cam.rotation.set(me.pitch * (1 - down) + down * 0.12, me.yaw, f.side * (down * 1.2 - bounce * 2));
       this.vm.update({ dt, speed: 0, grounded: true, ads: false, sprint: false, look: this.look, reload: -1, bolt: -1, hidden: true });
       this.hud.setCrosshair(0, false);

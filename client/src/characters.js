@@ -6,7 +6,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { loadModel } from './levelbuild.js';
 import { canvasTex } from './materials.js';
 import { Ragdoll, SHOVE } from './ragdoll.js';
-import { raySphere, rayCapsule, CROUCH_SCALE } from '../../shared/collision.js';
+import { raySphere, rayCapsule, CROUCH_SCALE, LEAN, leanOf } from '../../shared/collision.js';
 import { CREWS } from '../../shared/crews.js';
 import { repaint, kitFor, hang } from './crewkit.js';
 
@@ -25,6 +25,21 @@ const HIT = [
 ];
 const HEAD = [0, 10, 1.5], HEAD_R = 0.125;      // the head's middle in the Head bone's own frame (centimetres), and its radius in metres
 const _head = new THREE.Vector3();
+/**
+ * A full lean (Q and E), on top of whatever the soldier is doing: the pelvis tilts, each of the three spine joints bends and
+ * the neck gives some of it back (degrees). Then the legs slant, feet where they were, until the head is LEAN.reach to the
+ * side: where the leaning player's view is. `node scripts/aim-lab.mjs lean out.jpg` shows the pose and checks the head.
+ */
+export const LEAN_POSE = { pelvis: 6, spine: 9, neck: 12 };
+const LEG = 0.8, HIPS_MOST = 0.3;                // hip joint to ankle, and the furthest the hips go to the side, metres
+const FWD = new THREE.Vector3(0, 0, -1), RAD = Math.PI / 180;
+const _turn = new THREE.Quaternion(), _inv = new THREE.Quaternion(), _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion(), _qc = new THREE.Quaternion(), _qd = new THREE.Quaternion(), _v = new THREE.Vector3(), _s = new THREE.Vector3();
+/** Turns a bone by `angle` round the way the soldier faces. parent: how the bone's parent is turned in the soldier's own frame; `out` gets the same for the bone. */
+function turn(bone, parent, angle, out) {
+  _turn.setFromAxisAngle(FWD, angle); _inv.copy(parent).invert();
+  bone.quaternion.premultiply(parent).premultiply(_turn).premultiply(_inv);
+  return out.multiplyQuaternions(parent, bone.quaternion);
+}
 const LINGER = 12, SINK = 1.6, MAX_LYING = 10;      // seconds a body lies, seconds it takes to sink away, bodies left lying at once
 const lerpAngle = (a, b, t) => { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return a + d * t; };
 
@@ -68,6 +83,38 @@ class Body {
     this.gun = gunMesh(owner.gun);
     this.pose0 = Object.values(bones).map((b) => [b, b.position.clone(), b.quaternion.clone()]);
     this.rag = new Ragdoll(bones, this.gun);
+    // the frame the hips are placed in, seen from the soldier's own (x his right, y up, -z ahead): how it is turned, and how many of its units make a metre
+    model.updateMatrixWorld(true); this.frame = new THREE.Quaternion(); bones.Hips.parent.matrixWorld.decompose(_v, this.frame, _s); this.units = 1 / _s.x;
+    this.bent = ['Hips', 'Spine', 'Spine1', 'Spine2', 'Neck', 'LeftUpLeg', 'RightUpLeg', 'LeftFoot', 'RightFoot'].map((n) => ({ bone: bones[n], q: new THREE.Quaternion(), p: new THREE.Vector3() }));
+    this.column = ['Head', 'Neck', 'Spine2', 'Spine1', 'Spine', 'Hips'].map((n) => bones[n]); this.frameX = _v.x;
+    this.leant = false;
+  }
+  /** How far to his right the middle of the soldier's head is, metres. Worked out from the joints, which each turn and place the next. */
+  headSide() {
+    _v.fromArray(HEAD);
+    for (const bone of this.column) _v.applyQuaternion(bone.quaternion).add(bone.position);
+    return _v.applyQuaternion(this.frame).x / this.units + this.frameX;
+  }
+  /** Leans the pose the mixer wrote: k from -1 (all the way left) to 1 (right). See LEAN_POSE. */
+  lean(k) {
+    for (const s of this.bent) { s.q.copy(s.bone.quaternion); s.p.copy(s.bone.position); }
+    this.leant = true;
+    const b = this.bones, P = LEAN_POSE, pelvis = P.pelvis * RAD * k, spine = P.spine * RAD * k, was = this.headSide();
+    const hips = turn(b.Hips, this.frame, pelvis, _qa);
+    turn(b.Neck, turn(b.Spine2, turn(b.Spine1, turn(b.Spine, hips, spine, _qb), spine, _qc), spine, _qb), -P.neck * RAD * k, _qc);
+    // what the bending leaves of the way, the hips go: at a full lean the head is LEAN.reach from the feet, whatever the stride does to it
+    const a = Math.abs(k), go = THREE.MathUtils.clamp(k * LEAN.reach + was * (1 - a) - this.headSide(), -HIPS_MOST * a, HIPS_MOST * a), slant = Math.asin(go / LEG);
+    b.Hips.position.add(_v.set(go, LEG * (Math.cos(slant) - 1), 0).applyQuaternion(_inv.copy(this.frame).invert()).multiplyScalar(this.units));
+    for (const side of ['Left', 'Right']) {                   // the legs slant back to where the feet stood, and the feet stay flat
+      const leg = turn(b[side + 'UpLeg'], hips, slant - pelvis, _qb);
+      turn(b[side + 'Foot'], _qc.multiplyQuaternions(leg, b[side + 'Leg'].quaternion), -slant, _qd);
+    }
+  }
+  /** Takes the lean back out. The mixer writes a bone only when its animation moved it on, so a lean left in would add up. */
+  unlean() {
+    if (!this.leant) return;
+    for (const s of this.bent) { s.bone.quaternion.copy(s.q); s.bone.position.copy(s.p); }
+    this.leant = false;
   }
   /** Made ready for a living soldier of this team, in this crew's colours and kit. */
   wear(team, crew) {
@@ -79,7 +126,7 @@ class Body {
     for (const [b, p, q] of this.pose0) { b.position.copy(p); b.quaternion.copy(q); }
     const g = this.gun; this.bones.RightHand.add(g); g.scale.setScalar(100); g.position.set(-2, 9, 3); g.rotation.set(1.45, 0.1, -1.5);
     this.w = { Idle: 1, Walk: 0, Run: 0 }; for (const k in this.act) this.act[k].setEffectiveWeight(this.w[k]);
-    this.dead = false; this.deadT = 0; this.animT = 0;
+    this.dead = false; this.deadT = 0; this.animT = 0; this.leant = false;
     this.root.scale.set(1, 1, 1); this.loose.position.y = 0; this.root.visible = this.loose.visible = false;
     this.owner.engine.scene.add(this.root, this.loose);
   }
@@ -116,7 +163,7 @@ class Char {
     const tex = canvasTex(256, (g) => { g.clearRect(0, 0, 256, 256); g.font = '600 34px system-ui, sans-serif'; g.textAlign = 'center'; g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillText(info.name, 129, 141); g.fillStyle = TEAM_CSS[info.team || 0]; g.fillText(info.name, 128, 140); });
     this.tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: false }));
     this.tag.scale.set(1.5, 1.5, 1); this.tag.visible = false; owner.engine.fx.add(this.tag);
-    this.buf = []; this.alive = false; this.flags = 0; this.pitch = 0; this.speed = 0; this.vx = 0; this.vz = 0; this.placed = false;
+    this.buf = []; this.alive = false; this.flags = 0; this.pitch = 0; this.lean = 0; this.speed = 0; this.vx = 0; this.vz = 0; this.placed = false;
     this.pos = new THREE.Vector3(); this.yaw = 0; this.hp = 100; this.weapon = 0;
   }
   push(t, s) {
@@ -169,7 +216,7 @@ class Char {
     const px = this.pos.x, pz = this.pos.z;
     this.pos.set(a.x + (c.x - a.x) * k, a.y + (c.y - a.y) * k, a.z + (c.z - a.z) * k);
     this.yaw = lerpAngle(a.yaw, c.yaw, Math.min(1, k)); this.pitch = a.pitch + (c.pitch - a.pitch) * Math.min(1, k); this.flags = c.flags;
-    if (!this.placed) { this.placed = true; this.speed = this.vx = this.vz = 0; }      // just put down somewhere: that was not a movement
+    if (!this.placed) { this.placed = true; this.speed = this.vx = this.vz = 0; this.lean = leanOf(this.flags); }      // just put down somewhere: that was not a movement
     else {
       const inv = 1 / Math.max(dt, 1e-3), ease = Math.min(1, dt * 8), vx = (this.pos.x - px) * inv, vz = (this.pos.z - pz) * inv;
       this.speed += (Math.min(Math.hypot(vx, vz), 9) - this.speed) * ease; this.vx += (vx - this.vx) * ease; this.vz += (vz - this.vz) * ease;
@@ -185,12 +232,15 @@ class Char {
     if (act.Walk) act.Walk.timeScale = THREE.MathUtils.clamp(s / 1.7, 0.6, 1.8);
     if (act.Run) act.Run.timeScale = THREE.MathUtils.clamp(s / 4.2, 0.8, 1.5);
     body.animT += dt;
+    this.lean += (leanOf(this.flags) - this.lean) * Math.min(1, dt * 16);
     if (!coarse || tick) {
+      body.unlean();
       body.mixer.update(body.animT); body.animT = 0;
       body.bones.Spine1.rotation.x += -this.pitch * 0.7;               // on top of the pose the mixer just wrote
+      if (Math.abs(this.lean) > 0.01) body.lean(this.lean);
     }
     this.tag.visible = showTag;
-    if (showTag) this.tag.position.set(this.pos.x, this.pos.y + (crouch ? 1.75 : 2.2), this.pos.z);
+    if (showTag) { const side = this.lean * LEAN.reach; this.tag.position.set(this.pos.x + Math.cos(this.yaw) * side, this.pos.y + (crouch ? 1.75 : 2.2), this.pos.z - Math.sin(this.yaw) * side); }      // over his head, also when he leans
   }
   dispose() {
     this.owner.engine.fx.remove(this.tag); this.tag.material.map.dispose(); this.tag.material.dispose();

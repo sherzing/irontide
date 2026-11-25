@@ -230,19 +230,40 @@ export function rayCapsule(ox, oy, oz, dx, dy, dz, ax, ay, az, bx, by, bz, r) {
   return best;
 }
 export const CROUCH_SCALE = 0.74;      // a crouching soldier is this much shorter: the model is squashed by it, and so are the volumes
+
 /**
- * Returns {t, zone} for a ray against a character whose feet are at (fx,fy,fz), or null. Three upright volumes fitted to
- * the soldier model's middle: what bots are shot with. A player's own shots are tested against the soldier as he is drawn
- * (client/src/characters.js), arms and stride included.
+ * Leaning (Q and E). At a full lean the head is `reach` m to the side and the view is tilted by `roll` radians; getting
+ * there takes `time` s; the head stays `pad` m off whatever is beside it. The soldier the others see puts his head there
+ * (LEAN_POSE in client/src/characters.js). `drop` (m the head comes down) and `chest` and `hips` (how much of the head's
+ * way those go) are read off that pose: `node scripts/aim-lab.mjs lean out.jpg` shows it and checks the head.
  */
-export function hitCharacter(ox, oy, oz, dx, dy, dz, maxT, fx, fy, fz, crouch) {
-  const k = crouch ? CROUCH_SCALE : 1;
+export const LEAN = { reach: 0.4, drop: 0.07, roll: 0.15, time: 0.2, pad: 0.15, chest: 0.7, hips: 0.5 };
+/** A lean as part of a soldier's state flags: bits 5-7 hold how far (sevenths of the full reach), bit 8 is set for the right. */
+export const leanBits = (k) => { const n = Math.min(7, Math.round(Math.abs(k) * 7)); return n ? (n << 5) | (k > 0 ? 256 : 0) : 0; };
+/** The lean in those flags: -1 (all the way left) to 1 (all the way right). */
+export const leanOf = (flags) => ((flags >> 5) & 7) / 7 * (flags & 256 ? 1 : -1);
+const UPRIGHT = [0, 0];
+/** How far the head of a soldier is to the side of his feet, [x, z] in metres, when he looks along `yaw` with these flags. */
+export function leanShift(yaw, flags) {
+  if (!(flags & 224)) return UPRIGHT;
+  const d = leanOf(flags) * LEAN.reach;
+  return [Math.cos(yaw) * d, -Math.sin(yaw) * d];
+}
+
+/**
+ * Returns {t, zone} for a ray against a character whose feet are at (fx,fy,fz), or null. Three volumes fitted to the
+ * soldier model's middle: what bots are shot with. (lx, lz) is how far his head leans to the side (leanShift): the
+ * volumes lean with it. A player's own shots are tested against the soldier as he is drawn (client/src/characters.js),
+ * arms and stride included.
+ */
+export function hitCharacter(ox, oy, oz, dx, dy, dz, maxT, fx, fy, fz, crouch, lx = 0, lz = 0) {
+  const k = crouch ? CROUCH_SCALE : 1, down = Math.hypot(lx, lz) / LEAN.reach * LEAN.drop * k, c = LEAN.chest, h = LEAN.hips;
   let best = maxT, zone = null;
-  let t = raySphere(ox, oy, oz, dx, dy, dz, fx, fy + 1.58 * k, fz, 0.14);
+  let t = raySphere(ox, oy, oz, dx, dy, dz, fx + lx, fy + 1.58 * k - down, fz + lz, 0.14);
   if (t >= 0 && t < best) { best = t; zone = 'head'; }
-  t = rayCapsule(ox, oy, oz, dx, dy, dz, fx, fy + 1.0 * k, fz, fx, fy + 1.3 * k, fz, 0.25);
+  t = rayCapsule(ox, oy, oz, dx, dy, dz, fx + lx * h, fy + 1.0 * k, fz + lz * h, fx + lx * c, fy + 1.3 * k - down * c, fz + lz * c, 0.25);
   if (t >= 0 && t < best) { best = t; zone = 'body'; }
-  t = rayCapsule(ox, oy, oz, dx, dy, dz, fx, fy + 0.2, fz, fx, fy + 0.8 * k, fz, 0.2);
+  t = rayCapsule(ox, oy, oz, dx, dy, dz, fx, fy + 0.2, fz, fx + lx * h * 0.8, fy + 0.8 * k, fz + lz * h * 0.8, 0.2);
   if (t >= 0 && t < best) { best = t; zone = 'legs'; }
   return zone ? { t: best, zone } : null;
 }
