@@ -70,6 +70,11 @@ A change is finished when every check its files touch is **green**.
   browser, with `npx vite --port 5177`: `node scripts/aim-lab.mjs volumes out.jpg` paints what a shot hits over
   the soldier, `sights out.png` shows each sight against the screen's centre, `lag` measures a shot trailing a
   turning view (0 is right).
+- **Lean.** Q and E move a player's view to the side (`LEAN` in `shared/collision.js`) and bend the soldier the
+  others see (`LEAN_POSE` in `client/src/characters.js`); the lean travels in the state flags (`leanBits`). His head
+  must be where the leaning view is, or a player shoots from where nobody can hit him. With `npx vite --port 5177`:
+  `node scripts/aim-lab.mjs lean out.jpg` shows the pose with what a shot hits and fails when head and view are more
+  than 4 cm apart. Bots do not lean; their sight, their aim and `hitCharacter` follow a player who does.
 - **Crews** (`shared/crews.js`) are looks only: the body texture repainted and kit hung on bones
   (`client/src/crewkit.js`). `node scripts/crew-sheet.mjs out.jpg` shows them all, front and back. BLUE's crews
   stay cold-coloured and RED's warm: that is how a team is told apart.

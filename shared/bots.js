@@ -1,5 +1,5 @@
 // Bot AI. Runs inside GameSim (browser for solo play, Node for multiplayer).
-import { PLAYER } from './collision.js';
+import { PLAYER, LEAN, leanShift } from './collision.js';
 import { WEAPONS } from './weapons.js';
 
 export const SKILLS = {
@@ -19,7 +19,7 @@ const wrap = (a) => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI)
 
 export function makeAI(skill, mode = 'roam', post = null) {
   return {
-    skill: SKILLS[skill] || SKILLS.normal, mode, post, target: null, visible: false, seenAt: -99, lastSeen: null,
+    skill: SKILLS[skill] || SKILLS.normal, mode, post, target: null, visible: false, peek: false, seenAt: -99, lastSeen: null,
     reactAt: 0, engageAt: 0, alertUntil: 0, nextSee: Math.random() * 0.3, path: null, pi: 0, repathAt: 0, goal: null,
     strafe: 0, strafeUntil: 0, burst: 0, pauseUntil: 0, nextShot: 0, ammo: 30, reloadUntil: 0,
     stuckT: 0, stuckX: 0, stuckZ: 0,
@@ -52,7 +52,7 @@ export function botThink(sim, e, dt, now) {
   // ---------------- perception
   if (now >= ai.nextSee) {
     ai.nextSee = now + 0.14 + Math.random() * 0.1;
-    let best = null, bd = 1e9;
+    let best = null, bd = 1e9, peek = false;                  // peek: he leans out of cover and only his head shows
     const fx = -Math.sin(e.yaw), fz = -Math.cos(e.yaw);
     for (const t of sim.ents.values()) {
       if (t === e || !t.alive || !sim.hostile(e, t)) continue;
@@ -60,13 +60,15 @@ export function botThink(sim, e, dt, now) {
       if (d > 70 || d >= bd) continue;
       const inFov = d < 5 || (dx * fx + dz * fz) / (d || 1) > 0.25 || ai.alertUntil > now || ai.target === t.id;
       if (!inFov) continue;
-      const ty = t.y + (t.flags & 1 ? 0.8 : 1.2);
-      if (!world.los(e.x, eyeY, e.z, t.x, ty, t.z) && !world.los(e.x, eyeY, e.z, t.x, t.y + (t.flags & 1 ? 1.1 : 1.6), t.z)) continue;
-      best = t; bd = d;
+      // his chest or his head must be in sight. A player who leans (Q, E) has both to the side of his feet.
+      const [lx, lz] = leanShift(t.yaw, t.flags), c = LEAN.chest, ty = t.y + (t.flags & 1 ? 0.8 : 1.2);
+      const chest = world.los(e.x, eyeY, e.z, t.x + lx * c, ty, t.z + lz * c);
+      if (!chest && !world.los(e.x, eyeY, e.z, t.x + lx, t.y + (t.flags & 1 ? 1.1 : 1.6), t.z + lz)) continue;
+      best = t; bd = d; peek = !chest && (lx !== 0 || lz !== 0);
     }
     if (best) {
       if (!ai.visible || ai.target !== best.id) { ai.reactAt = now + sk.react * rnd(0.7, 1.3); ai.engageAt = now; }
-      ai.target = best.id; ai.visible = true; ai.seenAt = now; ai.lastSeen = { x: best.x, z: best.z };
+      ai.target = best.id; ai.visible = true; ai.seenAt = now; ai.lastSeen = { x: best.x, z: best.z }; ai.peek = peek;
     } else {
       ai.visible = false;
       if (ai.mode === 'hunt' && now - ai.seenAt > 2.5) {
@@ -160,9 +162,10 @@ export function botThink(sim, e, dt, now) {
     const tv = Math.hypot(tgt.vx || 0, tgt.vz || 0);
     let err = sk.err * (Math.PI / 180) * (1 + tv * 0.11 + 1.6 * Math.exp(-(now - ai.engageAt) / 0.9)) * (e.weapon === 'marksman' ? 0.45 : 1);
     if (sp > 1) err *= 1.3;
-    const aimHead = sk === SKILLS.hard && Math.random() < 0.25;
-    const ty = tgt.y + (tgt.flags & 1 ? (aimHead ? 1.14 : 0.85) : (aimHead ? 1.64 : 1.22));
-    const yaw = Math.atan2(-(tgt.x - e.x), -(tgt.z - e.z)) + gauss() * err;
+    const aimHead = ai.peek || (sk === SKILLS.hard && Math.random() < 0.25);
+    const [lx, lz] = leanShift(tgt.yaw, tgt.flags), part = aimHead ? 1 : LEAN.chest;      // a leaning player's head and chest are to the side of his feet
+    const ty = tgt.y + (tgt.flags & 1 ? (aimHead ? 1.14 : 0.85) : (aimHead ? 1.64 : 1.22)) - (lx || lz ? LEAN.drop * part : 0);
+    const yaw = Math.atan2(-(tgt.x + lx * part - e.x), -(tgt.z + lz * part - e.z)) + gauss() * err;
     const pitch = Math.atan2(ty - eyeY, d) + gauss() * err;
     const cp = Math.cos(pitch);
     sim.botFire(e, [e.x, eyeY, e.z], [-Math.sin(yaw) * cp, Math.sin(pitch), -Math.cos(yaw) * cp], sk.dmg);
