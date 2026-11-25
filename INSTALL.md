@@ -1,6 +1,6 @@
 # Installing IRONTIDE
 
-A **release** is one archive, `irontide.tar.gz` (about 330 MB): the built game, its server and the server's
+A **release** is one archive, `irontide.tar.gz` (about 110 MB): the built game, its server and the server's
 dependencies. Its installer, `install.sh`, unpacks the release, has the server check the settings, starts it and
 confirms that it answers. Nothing is compiled, and nothing besides the archive is downloaded.
 
@@ -11,7 +11,7 @@ address.
 | --- | --- |
 | Node.js 18 or newer, `tar`, a POSIX `sh` | No npm, git or build tools |
 | `curl` | For the download line and the checks in this guide. The installer itself does not use it |
-| 1.1 GB of free disk | An installation is 370 MB. A download keeps the archive beside it until it is unpacked, and an update holds the old copy until the new one is in place |
+| 400 MB of free disk | An installation is 115 MB. A download keeps the archive beside it until it is unpacked, and an update holds the old copy until the new one is in place |
 | One free TCP port | 8787 unless you choose another |
 
 Processor, memory and bandwidth for a given number of players:
@@ -134,7 +134,7 @@ In a source checkout, with Node.js 22.12 or newer and npm:
 
 ```sh
 npm ci
-npm run assets       # downloads about 370 MB of textures, models and skies; run it again after an interruption
+npm run assets       # downloads about 370 MB of textures, models and skies, then builds what the game ships from them (a few minutes); run it again after an interruption
 npm run package      # builds the client, packs release/irontide.tar.gz, then unpacks and starts it as a test
 ```
 

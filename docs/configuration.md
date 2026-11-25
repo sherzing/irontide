@@ -117,6 +117,9 @@ restart the server.
 | Which level is the default | `DEFAULT_LEVEL` in `shared/levels/index.js` |
 | Graphics quality presets | `QUALITY` in `client/src/engine.js` |
 | Textures and models to download | lists at the top of `scripts/fetch-assets.mjs` |
+| How hard the shipped textures are compressed, how large a prop's textures are, a prop's triangle budget | `QUALITY`, `TEX` and `BUDGET` in `scripts/optimize-assets.mjs`; `npm run optimize` then builds everything again |
+| How long a browser keeps the game's files before it asks whether they changed | `keep` in `server/index.js` |
+| How much a first visit may download, and how many shader programs may be compiled while drawing, before the load check fails | `BUDGET_MB` and `LATE` in `scripts/load-test.mjs` |
 | Dev server port and WebSocket proxy | `vite.config.js` |
 
 The options inside a `QUALITY` preset:

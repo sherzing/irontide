@@ -7,8 +7,9 @@ the level format.
 ## Local setup
 
 1. `npm ci`. Done when `node_modules/.bin/vite` exists.
-2. `npm run assets` (downloads about 370 MB; re-run it after an interruption, it skips what is there). Done when it
-   exits 0 and `public/assets/models/concrete_road_barrier/concrete_road_barrier.lod.gltf` exists.
+2. `npm run assets` (downloads about 370 MB into `assets-src/`, then builds what the game ships into `public/assets/`,
+   a few minutes of encoding; re-run it after an interruption, it skips what is there). Done when it exits 0 and
+   `public/assets/models/concrete_road_barrier/concrete_road_barrier.lod.gltf` exists.
 3. `npm run build`. Done when `dist/index.html` exists and `dist/assets/tex/` holds textures.
 4. Start `node server/index.js --port <free port>` in the background. Done when
    `curl -s localhost:<port>/status` prints `[]`.
@@ -26,6 +27,7 @@ A change is finished when every check its files touch is **green**.
 | `shared/weapons.js`, a hit volume, or `humanFire` in `shared/sim.js` | `node scripts/ballistics.mjs` | Exit code 0 |
 | `install.sh`, `scripts/package.mjs` | `npm run package`, then `sh release/install.sh --from release/irontide.tar.gz --dir <new folder> --port <free port> --service none` | The first prints `started and joined OK`; the second exits 0 and prints `is installed in <new folder>` |
 | `client/` | `npm run build`, then `node scripts/play-test.mjs <out prefix> "http://localhost:<port>/?auto=dm&bots=9&level=<id>"` for each level the change can reach (the training range: `?auto=range`) | It prints `errors: 0`, and you have opened every screenshot it saved |
+| What a first visit downloads or compiles: `scripts/optimize-assets.mjs`, an asset, a loader, a material or shader, a render pass | `npm run build`, restart the server, then `node scripts/load-test.mjs http://localhost:<port>` | Exit code 0 |
 
 ## Gotchas
 
@@ -89,7 +91,16 @@ A change is finished when every check its files touch is **green**.
   (`from=180 move=5 head=1 at=wall` and more, listed at the top of the script) and
   `node scripts/death-strip.mjs - trials=40` kills forty soldiers every which way and counts the odd ones: a foot
   thrown into the air, a body that never comes to rest. Forty deaths give 0 odd, now and then 1.
-- **Props** load from `<id>.lod.gltf`, which `npm run optimize` writes. Run it after adding a model.
+- **Assets.** `assets-src/` holds the downloads; the game ships what `npm run optimize` builds from them into
+  `public/assets/`: AVIF textures, `.sky` skies (`client/src/sky.js` reads them) and `<id>.lod.gltf` props. Run it
+  after adding a texture, model or sky, then rebuild. After a first build or a changed setting it rebuilds the whole
+  folder: restart a running Vite, which lists `public/` when it starts.
+- **Loading.** A first visit costs megabytes and shader programs; `node scripts/load-test.mjs <url>` prints both.
+  A lit program takes about 0.1 s to compile, so keep them few. A number written into shader text makes one program
+  per value: pass it as a uniform (`uSurf` in `patchSurface`). A pass that draws the scene under other lights than
+  the main pass compiles every lit material a second time: the mirror pass keeps the camera's light for that.
+  `Engine.precompile` starts a frame's programs behind the loading screen through `draw()` and `pass()` in
+  `render()`; draw a new pass through them.
 - **Installer.** `install.sh` is POSIX `sh` (it runs under dash and BusyBox) and holds no list of valid settings:
   it asks the release's own server with `--check`. An installed copy runs the `install.sh` packed inside it, so
   repack before testing a change through `<folder>/app/install.sh`.

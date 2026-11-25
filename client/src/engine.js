@@ -4,7 +4,7 @@
 //         -> ambient occlusion from depth -> ray-marched sun shafts + lamp glow (half res, blurred)
 //         -> composite (AO, height fog, in-scatter) -> bloom -> tone map + grade -> screen
 import * as THREE from 'three';
-import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+import { loadSky } from './sky.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
@@ -296,8 +296,7 @@ export class Engine {
 
   /** Loads the HDRI sky, finds the sun in it and rotates it to the level's requested azimuth. */
   async loadEnvironment(env, bounds) {
-    const tex = await new HDRLoader().setDataType(THREE.FloatType).loadAsync(`/assets/hdri/${env.hdri}.hdr`);
-    tex.mapping = THREE.EquirectangularReflectionMapping;
+    const tex = await loadSky(env.hdri);
     // --- locate the sun: luminance-weighted centroid of the brightest texels
     const { data, width: W, height: H } = tex.image;
     const stride = data.length / (W * H);
@@ -398,13 +397,15 @@ export class Engine {
   setGlowLights(list) { this.glow = list.slice(0, MAX_GLOW); }
 
   /**
-   * Compiles every material for the HDR scene target, uploads all textures and renders one frame from
-   * `eye` toward `target`, so the first seconds of play do not hitch (call it behind the loading screen).
+   * Behind the loading screen: starts every shader program a frame needs before any of them is used, uploads the
+   * textures, waits until the programs are compiled, then draws a frame from `eye` toward `target`. A program first met
+   * while drawing stops the game until it is compiled; the shadow pass's few and the sky's still are.
    */
   async precompile(eye, target) {
     const r = this.renderer;
-    r.setRenderTarget(this.sceneRT);
-    try { await r.compileAsync(this.scene, this.camera); } catch { /* optional */ }
+    if (eye) { this.camera.position.fromArray(eye); this.camera.lookAt(target[0], target[1], target[2]); this.camera.rotation.order = 'YXZ'; }
+    const fade = this.fade, t0 = performance.now(); this.fade = 0;
+    this.warming = true; try { this.render(0); } catch { /* optional */ } finally { this.warming = false; }
     r.setRenderTarget(null);
     const seen = new Set();
     this.scene.traverse((o) => {
@@ -412,8 +413,12 @@ export class Engine {
         const t = m[k]; if (t && t.isTexture && !seen.has(t) && t.image) { seen.add(t); try { r.initTexture(t); } catch { /* not ready */ } }
       }
     });
-    if (eye) { this.camera.position.fromArray(eye); this.camera.lookAt(target[0], target[1], target[2]); this.camera.rotation.order = 'YXZ'; }
-    const fade = this.fade; this.fade = 0; this.render(0); this.render(0); this.fade = fade;
+    while (r.info.programs.some((p) => !p.isReady())) await new Promise((done) => setTimeout(done, 10));
+    const t2 = performance.now(), ready = r.info.programs.length;
+    this.render(0); this.render(0); this.fade = fade;
+    // for scripts/load-test.mjs: where the time went, and how many programs were compiled while drawing
+    this.stats.programs = r.info.programs.length; this.stats.late = r.info.programs.slice(ready).map((p) => p.name || p.type);
+    for (const [name, start, end] of [['shaders compiled, textures to the GPU', t0, t2], ['first frames', t2, performance.now()]]) performance.measure(name, { start, end });
   }
 
   renderReflection() {
@@ -433,14 +438,20 @@ export class Engine {
     cp.multiplyScalar(2 / cp.dot(q));
     pm[2] = cp.x; pm[6] = cp.y; pm[10] = cp.z + 1; pm[14] = cp.w;
     const hidden = [];
-    for (const o of [...cam.children, ...this.noReflect]) if (o.visible) { o.visible = false; hidden.push(o); }
+    // a light stays: one light fewer would need a second program for every lit material
+    for (const o of [...cam.children, ...this.noReflect]) if (o.visible && !o.isLight) { o.visible = false; hidden.push(o); }
     G.uReflOn.value = 0; G.tRefl.value = blankTexture;         // the mirror must not sample itself
-    r.setRenderTarget(this.reflRT); r.render(this.scene, v);
+    r.setRenderTarget(this.reflRT); this.draw(this.scene, v);
     for (const o of hidden) o.visible = true;
     G.uReflOn.value = 1; G.tRefl.value = this.reflRT.texture;
   }
 
-  pass(material, target) { this.quad.material = material; this.renderer.setRenderTarget(target); this.quad.render(this.renderer); }
+  /** Draws a scene, or a full-screen pass. While `warming` (see precompile) both only start their shader programs. */
+  draw(scene, camera) { if (this.warming) this.renderer.compile(scene, camera); else this.renderer.render(scene, camera); }
+  pass(material, target) {
+    this.renderer.setRenderTarget(target);
+    if (this.warming) { warmQuad.material = material; this.renderer.compile(warmQuad, warmCam); } else { this.quad.material = material; this.quad.render(this.renderer); }
+  }
 
   /** Lowers the render resolution when frames get slow and raises it again when there is headroom. */
   adapt(dt) {
@@ -467,13 +478,14 @@ export class Engine {
     r.shadowMap.needsUpdate = (this.frame = (this.frame || 0) + 1) % (q.shadowEvery || 1) === 0 || !this.sun.shadow.map;   // shadow maps render in the first scene pass
     if (r.shadowMap.needsUpdate && this.shadowFollow) this.followShadow();
     if (this.reflRT && this.reflectY != null) this.renderReflection(); else G.uReflOn.value = 0;
-    r.setRenderTarget(this.sceneRT); r.render(this.scene, cam);
+    r.setRenderTarget(this.sceneRT); this.draw(this.scene, cam);
     this.stats.calls = r.info.render.calls; this.stats.tris = r.info.render.triangles;
 
-    const depth = this.sceneRT.depthTexture, shadow = this.sun.shadow.map?.depthTexture;
-    if (this.gtao) this.gtao.render(r, null, null);
+    const depth = this.sceneRT.depthTexture, shadow = this.sun.shadow.map?.depthTexture, warming = this.warming;
+    if (warming && this.gtao) { this.pass(this.gtao.gtaoMaterial, this.gtao.gtaoRenderTarget); this.pass(this.gtao.pdMaterial, this.gtao.pdRenderTarget); }
+    else if (this.gtao) this.gtao.render(r, null, null);
     const cu = this.mComp.uniforms, vu = this.mVol.uniforms;
-    const useVol = (q.vol > 0 || this.glow.length > 0) && !!shadow;
+    const useVol = (q.vol > 0 || this.glow.length > 0) && (!!shadow || warming);      // the shadow map exists once a frame is drawn
     if (useVol) {
       vu.tDepth.value = depth; vu.tShadow.value = shadow; vu.uProjInv.value.copy(cam.projectionMatrixInverse); vu.uCamWorld.value.copy(cam.matrixWorld);
       vu.uShadowMat.value.copy(this.sun.shadow.matrix); vu.uCamPos.value.setFromMatrixPosition(cam.matrixWorld); vu.uSunDir.value.copy(this.sunDir);
@@ -489,7 +501,11 @@ export class Engine {
     cu.uProjInv.value.copy(cam.projectionMatrixInverse); cu.uCamWorld.value.copy(cam.matrixWorld); cu.uCamPos.value.setFromMatrixPosition(cam.matrixWorld); cu.uSunDir.value.copy(this.sunDir);
     { const e = cam.projectionMatrix.elements; cu.uProj.value.set(e[0], e[5], e[10], e[14]); cu.uVmScale.value = this.vmScale || 1; cu.uAspect.value = cam.aspect; cu.uVmAO.value = q.vmAO ?? 1; }
     this.pass(this.mComp, this.postRT);
-    this.bloom.render(r, null, this.postRT, dt, false);
+    if (warming) {
+      const b = this.bloom; this.pass(b.materialHighPassFilter, b.renderTargetBright);
+      b.separableBlurMaterials.forEach((m, i) => this.pass(m, b.renderTargetsHorizontal[i]));
+      this.pass(b.compositeMaterial, b.renderTargetsHorizontal[0]); this.pass(b.blendMaterial, this.postRT);
+    } else this.bloom.render(r, null, this.postRT, dt, false);
     const fu = this.mFinal.uniforms;
     fu.tColor.value = this.postRT.texture; fu.time.value = this.time; fu.hurt.value = this.hurt; fu.scope.value = this.scope; fu.uExposure.value = this.exposure * this.fade * this.eye;
     this.pass(this.mFinal, null);
@@ -497,3 +513,5 @@ export class Engine {
 }
 
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3(), _m = new THREE.Matrix4(), _pl = new THREE.Plane(), _v4 = new THREE.Vector4(), _q4 = new THREE.Vector4();
+// stand in for a full-screen pass while its program is only compiled; no normals, as the pass's own triangle has none (a program is compiled per set of attributes)
+const warmQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2).deleteAttribute('normal')), warmCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);

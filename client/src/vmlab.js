@@ -1,7 +1,7 @@
 // Viewmodel lab: renders the first-person weapons outside the game for inspection, filmstrips and
 // numeric continuity checks. Driven by scripts/vm-lab.mjs through window.lab.
 import * as THREE from 'three';
-import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+import { loadSky } from './sky.js';
 import { ViewModel } from './viewmodel.js';
 import { VM_SCALE } from './vmkit.js';
 import { WEAPONS } from '../../shared/weapons.js';
@@ -13,7 +13,7 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(78, innerWidth / innerHeight, 0.04, 800); camera.rotation.order = 'YXZ';
 camera.position.set(0, 1.6, 0); camera.rotation.y = -1.25; scene.add(camera);
-const env = await new HDRLoader().loadAsync('/assets/hdri/industrial_sunset_02_puresky.hdr'); env.mapping = THREE.EquirectangularReflectionMapping;
+const env = await loadSky('industrial_sunset_02_puresky');
 scene.environment = env; scene.background = env; scene.backgroundIntensity = 0.55; scene.environmentIntensity = 0.75; scene.backgroundBlurriness = 0.25;
 const sun = new THREE.DirectionalLight(0xffc48a, 4); sun.position.set(-3, 2.2, -4).add(camera.position); scene.add(sun);
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: 0x3a3a3c, roughness: 0.9 })); ground.rotation.x = -Math.PI / 2; scene.add(ground);

@@ -262,6 +262,9 @@ export class Characters {
     this.gun = gunParts();
     this.looks = new Map();
     this.src.scene.traverse((o) => { if (o.isMesh) this[o.material.name === 'VanguardBodyMat' ? 'bodyMat' : 'visorMat'] = o.material; });
+    // One soldier stands in the scene unseen and for good: a level's shader warm-up (Engine.precompile) compiles what is in
+    // the scene, and without him the soldiers' programs would be compiled when the first of them appears in a match.
+    const crew = Object.keys(CREWS)[0]; this.takeBody(CREWS[crew].side, crew);
   }
   /** A crew's materials and kit, made the first time someone wears it. An id this build does not know gets the side's first crew. */
   look(id, team) {

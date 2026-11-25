@@ -11,8 +11,8 @@ nothing else.
 | --- | --- | --- |
 | Processor | 1 core | The server is single-threaded, so every room shares one core. A full 64-player room used 17% of one core in testing. |
 | Memory | 1 GB | The running server holds 90–150 MB. |
-| Disk | 1.1 GB free | An installation is 370 MB. Installing keeps the 330 MB archive beside it until it is unpacked, and an update holds the old copy until the new one is in place. |
-| Upload | 5 Mbit/s for one 24-player room, 35 Mbit/s for one full 64-player room | See the table below. Every new player also downloads 106–229 MB once, depending on the levels they play. |
+| Disk | 400 MB free | An installation is 115 MB. Installing keeps the 110 MB archive beside it until it is unpacked, and an update holds the old copy until the new one is in place. |
+| Upload | 5 Mbit/s for one 24-player room, 35 Mbit/s for one full 64-player room | See the table below. Every new player also downloads 43–100 MB once, depending on the levels they play. |
 | Open port | One TCP port (8787 unless you change it) | The web page and the game traffic share it. |
 | Software | Node.js 18 or newer, `tar` | A release carries everything else. [INSTALL.md](../INSTALL.md#tested-on) lists the systems it was tested on. |
 
@@ -31,14 +31,17 @@ the four. None of this has been measured over the internet, or on a small rented
 
 ### Players
 
-- A desktop browser with WebGL2. Tested in Chromium 156; Firefox and Safari are untested.
+- A desktop browser with WebGL2 that shows AVIF images: Chrome 85, Firefox 113, Safari 16.4, or newer. Tested in Chromium 156; Firefox and Safari are untested.
 - Keyboard and mouse. There are no touch or gamepad controls, so phones and tablets do not work.
 - Any graphics chip of the last several years. Measured on Intel UHD integrated graphics at 1600×900, in frames per
   second on Low / Medium / High: Drydock with 10 players 60 / 45 / 25, Breakers with 32 players 60 / 58 / 44, Crosswind
   with 64 players 58 / 51 / 38, Ropewalk with 24 players 60 / 47 / 32. Dynamic resolution, on by default, lowers the render resolution to hold the frame rate.
-- The first visit downloads 106 MB for Drydock; Breakers adds 59 MB, Crosswind 64 MB and Ropewalk 31 MB when a player
-  first loads them in that order (260 MB for all four; Ropewalk straight after Drydock adds 77 MB, because it shares
-  its sky with Breakers). The browser keeps the files for a day.
+- The first visit downloads 48 MB for Drydock; Breakers adds 19 MB, Crosswind 22 MB and Ropewalk 11 MB when a player
+  first loads them in that order (100 MB for all four; Ropewalk straight after Drydock adds 28 MB, because it shares
+  its sky with Breakers). A first visit that starts on another level downloads 43 MB (Breakers), 54 MB (Crosswind)
+  or 57 MB (Ropewalk). At 10 Mbit/s Drydock's menu appears after 48 s. The browser keeps the files: for a day it
+  does not ask, after that it asks which of them changed and downloads only those. A private window keeps about 50 MB
+  (Chromium), so it downloads again what it dropped.
 
 ## Install
 
@@ -49,7 +52,7 @@ coding agent can carry them out. In short, on the server:
 curl -fsSL https://github.com/sherzing/irontide/releases/latest/download/install.sh | sudo sh -s -- --port 8787
 ```
 
-This downloads the latest release (about 330 MB), unpacks it into `/opt/irontide`, runs it as the systemd service
+This downloads the latest release (about 110 MB), unpacks it into `/opt/irontide`, runs it as the systemd service
 `irontide` and prints the address to open. Without `sudo` it installs into `~/irontide` with a per-user service.
 Running it again updates the installation and keeps its settings; restarting ends every running match, because rooms
 live in memory. Settings, logs, uninstalling and machines without systemd are covered in
@@ -65,7 +68,7 @@ The server's settings (default mode, bot fill, bot skill, level, port) are in
 [configuration.md](configuration.md#1-server).
 
 To host changed code, build your own release from a source checkout:
-[INSTALL.md](../INSTALL.md#building-a-release). That needs Node.js 22.12 or newer, npm and 1.5 GB of disk.
+[INSTALL.md](../INSTALL.md#building-a-release). That needs Node.js 22.12 or newer, npm and 1.2 GB of disk.
 
 ## Let players in
 
@@ -102,7 +105,7 @@ not been tested with IRONTIDE.
   only checks fire rate, range and line of sight.
 - **Nothing is saved.** Scores and rooms exist only while the room has players.
 - **One core.** All rooms run in one process on one core.
-- **No compression or CDN.** The server sends the first-visit download (106–229 MB) itself, uncompressed.
+- **No CDN.** The server sends the first-visit download (43–100 MB) itself. Code and models go out compressed (gzip; brotli over HTTPS); textures and skies are compressed files already.
 
 ## Troubleshooting
 
