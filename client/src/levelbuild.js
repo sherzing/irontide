@@ -10,7 +10,7 @@ import { PROP_DEFS, CONTAINER } from '../../shared/props.js';
 
 const gltf = new GLTFLoader();
 const modelCache = new Map();
-/** Loads a prop model. lod = the simplified version written by scripts/optimize-models.mjs (falls back to the original). */
+/** Loads a prop model. lod = the simplified version written by scripts/optimize-assets.mjs. */
 export function loadModel(id, lod = false) {
   const key = id + (lod ? ':lod' : '');
   if (!modelCache.has(key)) {
@@ -28,7 +28,7 @@ export function loadModel(id, lod = false) {
       });
       return g;
     };
-    modelCache.set(key, gltf.loadAsync(url(lod)).then(prep, (e) => { if (!lod) throw e; return gltf.loadAsync(url(false)).then(prep); }));
+    modelCache.set(key, gltf.loadAsync(url(lod)).then(prep));
   }
   return modelCache.get(key);
 }
@@ -208,7 +208,7 @@ export async function buildLevel(level, engine, onProgress = () => {}) {
 
   // ---- water
   if (level.env.water) {
-    const wn = await loadTex('waternormals.jpg');
+    const wn = await loadTex('waternormals');
     const wm = new THREE.MeshStandardMaterial({ color: level.env.water.color, roughness: 0.07, metalness: 0.0, normalMap: wn, normalScale: new THREE.Vector2(0.55, 0.55), envMapIntensity: 1.25 });
     wm.onBeforeCompile = (sh) => {
       surfUniforms(sh);

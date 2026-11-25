@@ -52,6 +52,7 @@ const chars = new Characters(engine);
 const hud = new Hud();
 const loaded = new Map();
 let current = null;
+const kit = Promise.all([chars.load(), vm.load()]).then(() => { vm.root.visible = false; });      // loads beside the first level
 const progress = (p, msg) => { $('#loading .bar i').style.width = Math.round(p * 100) + '%'; if (msg) $('#loadmsg').textContent = msg; };
 
 let inMenu = true, menuT = 0;
@@ -63,9 +64,12 @@ async function loadLevel(id) {
   if (current?.level === level) return current;
   $('#loading').classList.remove('hidden'); progress(0.05, 'Loading ' + level.name);
   if (current) { engine.scene.remove(current.built.root); current.built.deactivate(); }
-  await engine.loadEnvironment(level.env, level.bounds); progress(0.35);
   let built = loaded.get(level.id);
-  if (!built) { built = await buildLevel(level, engine, (p) => progress(0.35 + p * 0.6)); loaded.set(level.id, built); } else { engine.scene.add(built.root); built.activate(); }
+  const sky = engine.loadEnvironment(level.env, level.bounds);          // the sky downloads while the level is built
+  if (built) { engine.scene.add(built.root); built.activate(); }
+  else [built] = await Promise.all([buildLevel(level, engine, (p) => progress(0.05 + p * 0.85)), sky]);
+  await sky; await kit; progress(0.92);                                  // the weapons and soldiers are in the scene before its shaders are compiled
+  loaded.set(level.id, built);
   current = { level, built };
   audio.setWeather(level.env.weather?.rain || 0);
   const b = level.bounds, s0 = level.shots?.[0];                                         // warm up behind the loading screen
@@ -203,8 +207,6 @@ addEventListener('keydown', (e) => {
 
 // ---------------------------------------------------------------- boot
 progress(0.02, 'Loading assets');
-await Promise.all([chars.load(), vm.load()]);
-vm.root.visible = false;
 await ensureLevel(menuLevel());
 refreshUI();
 $('#menu').classList.remove('hidden');

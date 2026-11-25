@@ -1,6 +1,7 @@
 node_modules
 dist
 public/assets
+assets-src
 *.log
 .work
 release

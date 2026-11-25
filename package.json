@@ -4,13 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "assets": "node scripts/fetch-assets.mjs && node scripts/optimize-models.mjs",
+    "assets": "node scripts/fetch-assets.mjs && node scripts/optimize-assets.mjs",
     "dev": "concurrently -k \"vite\" \"node server/index.js\"",
     "build": "vite build",
     "start": "node server/index.js",
     "play": "vite build && node server/index.js",
     "package": "vite build && node scripts/package.mjs",
-    "optimize": "node scripts/optimize-models.mjs"
+    "optimize": "node scripts/optimize-assets.mjs"
   },
   "dependencies": {
     "three": "^0.187.0",

@@ -36,12 +36,15 @@ the menu; bots are dealt crews of their side. A crew is looks only (`shared/crew
 
 ```bash
 npm install
-npm run assets      # downloads the CC0 textures/models/skies into public/assets (~370 MB, once) and builds light prop models
+npm run assets      # downloads the CC0 textures/models/skies into assets-src (~370 MB, once) and builds what the game ships into public/assets
 npm run play        # builds the client and starts the server on http://localhost:8787
 ```
 
-`npm run assets` ends with `scripts/optimize-models.mjs`, which writes a simplified `.lod.gltf` next to every scanned prop
-(a single road barrier is 61k triangles as downloaded). Re-run it alone with `npm run optimize`.
+`npm run assets` ends with `scripts/optimize-assets.mjs`, which builds what the game ships from the downloads: every texture
+as an AVIF, every sky packed without loss (`.sky`), and a simplified `.lod.gltf` of every scanned prop (a single road barrier
+is 61k triangles as downloaded). That takes a few minutes; re-run it alone with `npm run optimize`. A first visit to Drydock
+then downloads 48 MB, where the downloads as they come would be 106 MB: `node scripts/load-test.mjs <url>` shows what a
+first visit downloads and where its time goes.
 
 Development: `npm run dev` (Vite with hot reload + game server; Vite proxies `/ws` to port 8787).
 
@@ -60,10 +63,11 @@ Every setting and where it lives: [docs/configuration.md](docs/configuration.md)
 | --- | --- |
 | `shared/` | Engine-agnostic game core used by both browser and server: collision, navigation grid, weapons and what a shot does (`weapons.js`), bot AI, crews (`crews.js`), the authoritative `GameSim`, level data |
 | `shared/levels/` | Levels as plain data (`drydock.js`, `breakers.js`, `crosswind.js`, `ropewalk.js`, the training range `range.js`), authoring helpers (`kit.js`), registry (`index.js`) |
-| `client/src/` | Renderer + post chain (`engine.js`), level builder (`levelbuild.js`), instanced containers (`containers.js`), scenery builders (`dressing.js`, `dressing-yard.js`, `dressing-airfield.js`, `dressing-town.js`), surface shaders (`materials.js`), rain (`rain.js`), FX, first-person weapons (`viewmodel.js`, `vmkit.js`, `vmparts.js` and one file per gun: `vmcarbine.js`, `vmsmg.js`, `vmshotgun.js`, `vmsniper.js`, `vmpistol.js`), soldiers (`characters.js`), what each crew wears (`crewkit.js`) and how they fall when killed (`ragdoll.js`), HUD (`hud.js`, `ui.css`), the menu's room list (`rooms.js`), session (`game.js`), transports (`net.js`) |
-| `server/index.js` | Static file server + WebSocket rooms, one `GameSim` per room |
+| `client/src/` | Renderer + post chain (`engine.js`), level builder (`levelbuild.js`), instanced containers (`containers.js`), scenery builders (`dressing.js`, `dressing-yard.js`, `dressing-airfield.js`, `dressing-town.js`), surface shaders (`materials.js`), the sky reader (`sky.js`), rain (`rain.js`), FX, first-person weapons (`viewmodel.js`, `vmkit.js`, `vmparts.js` and one file per gun: `vmcarbine.js`, `vmsmg.js`, `vmshotgun.js`, `vmsniper.js`, `vmpistol.js`), soldiers (`characters.js`), what each crew wears (`crewkit.js`) and how they fall when killed (`ragdoll.js`), HUD (`hud.js`, `ui.css`), the menu's room list (`rooms.js`), session (`game.js`), transports (`net.js`) |
+| `server/index.js` | Static file server (compresses code and models in transit) + WebSocket rooms, one `GameSim` per room |
 | `install.sh`, `scripts/package.mjs` | The installer for a packaged release, and the script that packs one into `release/` |
-| `scripts/` | Asset fetcher, headless sim test (`sim-test.mjs`), server protocol test (`net-test.mjs`), the model of what the weapons do (`ballistics.mjs`), a level's sight lines and walking distances (`level-lines.mjs`), Playwright screenshot/playtest tools and benches (`aim-lab.mjs`, `crew-sheet.mjs`, `death-strip.mjs`, `vm-lab.mjs`) |
+| `assets-src/`, `public/assets/` | The downloaded textures, models and skies, and what `scripts/optimize-assets.mjs` builds from them for the game. Neither is in git |
+| `scripts/` | Asset fetcher and builder, headless sim test (`sim-test.mjs`), what a first visit downloads (`load-test.mjs`), server protocol test (`net-test.mjs`), the model of what the weapons do (`ballistics.mjs`), a level's sight lines and walking distances (`level-lines.mjs`), Playwright screenshot/playtest tools and benches (`aim-lab.mjs`, `crew-sheet.mjs`, `death-strip.mjs`, `vm-lab.mjs`) |
 
 Solo modes run the very same `GameSim` in-process (`LocalTransport`), so quick match, campaign and multiplayer share one code path.
 
@@ -124,7 +128,7 @@ A street level is written house by house: `house(x0, z0, x1, z1, height, look, r
 walls, and the roof and what each street face shows (windows, shutters, doors) follow from which faces are open to a street.
 
 Collision, the bot navigation grid, shadows and the menu's level picker are all derived from that data — nothing else to wire up.
-New textures/models: add their Poly Haven ids to `scripts/fetch-assets.mjs`, then to `MATS` in `client/src/materials.js` or `PROP_DEFS` in `shared/props.js`.
+New textures/models: add their Poly Haven ids to `scripts/fetch-assets.mjs`, run `npm run assets`, then add them to `MATS` in `client/src/materials.js` or `PROP_DEFS` in `shared/props.js`.
 `client/dev.html?level=<id>&p=x,y,z&yaw=..&pitch=..` is a free camera view for checking a level,
 `node scripts/level-map.mjs out.png <id>` draws a top-down plan with colliders, spawns and objectives, and `client/vmlab.html` is a bench for the first-person weapons
 (`node scripts/vm-lab.mjs out.jpg views <weapon>`, with Vite on port 5177).

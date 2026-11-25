@@ -3,16 +3,19 @@
 import * as THREE from 'three';
 import { G, COVER_MIN, COVER_RANGE } from './globals.js';
 
-const loader = new THREE.TextureLoader();
+// A texture is unpacked off the main thread (an image bitmap), upside down as the GPU wants it: 2k AVIFs take 0.15 s each.
+const loader = new THREE.ImageBitmapLoader().setOptions({ imageOrientation: 'flipY', premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
 const cache = new Map();
 let aniso = 8;
 export const setAnisotropy = (a) => { aniso = a; for (const p of cache.values()) p.then((t) => { t.anisotropy = a; t.needsUpdate = true; }); };
 
-export function loadTex(file, srgb = false) {
-  const key = file + (srgb ? ':s' : '');
+/** A surface texture by its name in public/assets/tex/, without the ending: 'asphalt_02_diff'. */
+export function loadTex(name, srgb = false) {
+  const key = name + (srgb ? ':s' : '');
   if (!cache.has(key)) {
-    cache.set(key, loader.loadAsync('/assets/tex/' + file).then((t) => {
-      t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = aniso;
+    cache.set(key, loader.loadAsync(`/assets/tex/${name}.avif`).then((bitmap) => {
+      const t = new THREE.Texture(bitmap);
+      t.flipY = false; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = aniso; t.needsUpdate = true;
       if (srgb) t.colorSpace = THREE.SRGBColorSpace;
       return t;
     }));
@@ -32,6 +35,7 @@ function grayCopy(tex) {
   for (let i = 0; i < p.length; i += 4) { const l = Math.min(255, p[i] * k); p[i] = p[i + 1] = p[i + 2] = l; }
   g.putImageData(d, 0, 0);
   const t = new THREE.CanvasTexture(c);
+  t.flipY = false;                                  // the copy is upside down already, as its source is
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = aniso; t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
@@ -126,16 +130,19 @@ export const PLANAR_FRAG = /* glsl */`
  * opts: macro (tiling break-up + grime), ground (slab joints, puddles, ripples), planar, dark (soaked albedo), wetRough
  */
 export function patchSurface(mat, opts = {}) {
-  const o = { macro: true, ground: false, soft: false, planar: false, dark: 0.8, wetRough: 0.45, ...opts };
+  const o = { macro: true, ground: false, soft: false, planar: false, dark: 0.8, wetRough: 0.45, rough: 1, ...opts };
+  // the three numbers are uniforms (soaked albedo, wet roughness, roughness scale): written into the shader text, every
+  // different number would be one more program to compile
+  const numbers = { value: new THREE.Vector3(o.dark, o.wetRough, o.rough || 1) };
   const prev = mat.onBeforeCompile;
   mat.onBeforeCompile = (sh, r) => {
     prev?.(sh, r);
-    surfUniforms(sh);
+    surfUniforms(sh); sh.uniforms.uSurf = numbers;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\n' + SURF_VERT_PARS)
       .replace('#include <begin_vertex>', '#include <begin_vertex>\n' + SURF_VERT);
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\n' + SURF_FRAG_PARS)
+      .replace('#include <common>', '#include <common>\n' + SURF_FRAG_PARS + '\nuniform vec3 uSurf;')
       .replace('#include <map_fragment>', `#include <map_fragment>
         gUp = smoothstep(0.3, 0.9, vWNrm.y);
         float sExp = rainExposure(vWPos, vWNrm);
@@ -154,11 +161,11 @@ export function patchSurface(mat, opts = {}) {
         float streak = fbm(vec2(dot(vWPos.xz, vec2(1.7, 1.3)) * 2.3, vWPos.y * 0.22));
         float grime = 1.0 - smoothstep(0.0, 1.1, vWPos.y + (macro - 0.5) * 1.2);
         diffuseColor.rgb *= mix(1.0, 0.56, grime * 0.8 * (1.0 - gUp)) * mix(1.0, 0.72, smoothstep(0.5, 0.75, streak) * 0.8 * (1.0 - gUp));` : ''}
-        diffuseColor.rgb *= mix(1.0, ${o.dark.toFixed(2)}, gWet);
+        diffuseColor.rgb *= mix(1.0, uSurf.x, gWet);
         ${o.ground ? 'diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.5, 0.55, 0.6), gPuddle);' : ''}`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-        ${o.rough ? `roughnessFactor *= ${o.rough.toFixed(2)};` : ''}
-        roughnessFactor = mix(roughnessFactor, max(0.07, roughnessFactor * ${o.wetRough.toFixed(2)}), gWet);
+        roughnessFactor *= uSurf.z;
+        roughnessFactor = mix(roughnessFactor, max(0.07, roughnessFactor * uSurf.y), gWet);
         float riv = smoothstep(0.55, 0.8, vnoise(vec2(dot(vWPos.xz, vec2(7.1, 5.3)), vWPos.y * 0.6 + uTime * 0.22)));
         roughnessFactor = mix(roughnessFactor, 0.1, riv * gWet * (1.0 - gUp) * 0.55 * uRain);
         ${o.ground ? 'roughnessFactor = mix(roughnessFactor, 0.02, gPuddle);' : ''}`)
@@ -170,7 +177,7 @@ export function patchSurface(mat, opts = {}) {
         }` : ''}`);
     if (o.planar) sh.fragmentShader = sh.fragmentShader.replace('#include <lights_fragment_maps>', '#include <lights_fragment_maps>\n' + PLANAR_FRAG);
   };
-  const key = 'surf:' + JSON.stringify(o) + (mat.userData.vm ? ':vm' : '');
+  const key = 'surf:' + ['macro', 'ground', 'soft', 'planar'].filter((k) => o[k]).join('+') + (mat.userData.vm ? ':vm' : '');
   mat.customProgramCacheKey = () => key;
   return mat;
 }
@@ -180,7 +187,7 @@ export async function getMaterial(key) {
   if (matCache.has(key)) return matCache.get(key);
   const def = MATS[key] || MATS.wall;
   const p = (async () => {
-    const [diff, nor, arm] = await Promise.all([loadTex(def.id + '_diff.jpg', true), loadTex(def.id + '_nor.jpg'), loadTex(def.id + '_arm.jpg')]);
+    const [diff, nor, arm] = await Promise.all([loadTex(def.id + '_diff', true), loadTex(def.id + '_nor'), loadTex(def.id + '_arm')]);
     const m = new THREE.MeshStandardMaterial({
       map: def.gray ? grayCopy(diff) : diff, normalMap: nor, aoMap: arm, roughnessMap: arm, metalnessMap: arm,
       roughness: 1, metalness: 1, color: def.color ?? 0xffffff, vertexColors: true, envMapIntensity: def.env ?? 1,

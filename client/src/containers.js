@@ -281,7 +281,7 @@ const FRAG = /* glsl */`
 let shared = null;
 async function containerMaterial() {
   if (shared) return shared;
-  const nor = await loadTex('rusty_metal_02_nor.jpg');
+  const nor = await loadTex('rusty_metal_02_nor');
   const atlas = liveryAtlas(); atlas.minFilter = THREE.LinearMipmapLinearFilter; atlas.generateMipmaps = true; atlas.anisotropy = 8;
   const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0, normalMap: nor, normalScale: new THREE.Vector2(0.35, 0.35), side: THREE.DoubleSide });
   m.onBeforeCompile = (sh) => {

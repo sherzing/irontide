@@ -1,10 +1,12 @@
-// Downloads the CC0 assets (Poly Haven) + the animated soldier (three.js examples) into public/assets.
+// Downloads the CC0 assets (Poly Haven) + the animated soldier (three.js examples) into assets-src/.
+// The game ships what scripts/optimize-assets.mjs builds from them into public/assets/; `npm run assets` runs both.
 // Re-runnable: files that already exist are skipped.  Usage: npm run assets
-import { mkdir, writeFile, stat } from 'node:fs/promises';
+import { mkdir, readdir, rename, rm, writeFile, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', 'public', 'assets');
+const HERE = join(dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = join(HERE, 'assets-src');
 const API = 'https://api.polyhaven.com/files/';
 
 export const TEXTURES = [
@@ -28,6 +30,13 @@ export const MODELS = [
 export const HDRIS = ['industrial_sunset_02_puresky', 'belfast_sunset_puresky', 'kloofendal_48d_partly_cloudy_puresky', 'syferfontein_18d_clear_puresky'];
 
 const exists = (p) => stat(p).then((s) => s.size > 0, () => false);
+// A checkout from before assets-src/ existed holds its downloads in public/assets/: they are taken over, not fetched again.
+if (!await exists(ROOT) && await exists(join(HERE, 'public', 'assets', 'hdri', HDRIS[0] + '.hdr'))) {
+  await rename(join(HERE, 'public', 'assets'), ROOT);
+  // without what the build step of that time wrote beside them
+  for (const e of await readdir(join(ROOT, 'models'), { withFileTypes: true, recursive: true })) if (e.isFile() && /^lod_\d+\.jpg$|\.lod\d*\.(gltf|bin)$/.test(e.name)) await rm(join(e.parentPath, e.name));
+  console.log('took over the downloads in public/assets/ as assets-src/');
+}
 async function dl(url, dest) {
   if (await exists(dest)) return false;
   await mkdir(dirname(dest), { recursive: true });
@@ -75,4 +84,4 @@ await dl('https://raw.githubusercontent.com/mrdoob/three.js/r170/examples/models
 await dl('https://raw.githubusercontent.com/mrdoob/three.js/r170/examples/textures/waternormals.jpg', join(ROOT, 'tex', 'waternormals.jpg'));
 // rigged anatomical hand (MIT, WebXR Input Profiles) — the base of the first-person gloves
 await dl('https://cdn.jsdelivr.net/npm/@webxr-input-profiles/assets@1.0.20/dist/profiles/generic-hand/right.glb', join(ROOT, 'models', 'hand', 'right.glb'));
-console.log('assets ready in', ROOT);
+console.log('downloads ready in', ROOT);
