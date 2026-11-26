@@ -116,12 +116,13 @@
     <div class="row"><label>Callsign</label><input type="text" maxlength="16" data-opt="name" spellcheck="false" aria-label="Callsign"></div>
     <div class="row"><label>Graphics</label><div class="seg" data-opt="quality"><button data-v="low">Low</button><button data-v="medium">Medium</button><button data-v="high">High</button><button data-v="ultra">Ultra</button></div></div>
     <div class="row"><label>Dynamic resolution</label><div class="seg" data-opt="dynres"><button data-v="on">On</button><button data-v="off">Off</button></div></div>
+    <div class="row"><label>Frame rate readout</label><div class="seg" data-opt="perf"><button data-v="off">Off</button><button data-v="on">On</button></div></div>
     <div class="row"><label>Mouse sensitivity</label><div class="rng"><input type="range" min="2" max="40" data-opt="sens"><span class="val" data-val="sens"></span></div></div>
     <div class="row"><label>Invert mouse up / down</label><div class="seg" data-opt="invertY"><button data-v="off">Off</button><button data-v="on">On</button></div></div>
     <div class="row"><label>Aim with right mouse</label><div class="seg" data-opt="aim"><button data-v="toggle">Toggle</button><button data-v="hold">Hold</button></div></div>
     <div class="row"><label>Field of view</label><div class="rng"><input type="range" min="60" max="100" data-opt="fov"><span class="val" data-val="fov"></span></div></div>
     <div class="row"><label>Volume</label><div class="rng"><input type="range" min="0" max="100" data-opt="volume"><span class="val" data-val="volume"></span></div></div>
-    <p class="note">Graphics presets change resolution, shadows, ambient occlusion and anti-aliasing. If the frame rate is low, step down one preset.</p>
+    <p class="note">Graphics presets change resolution, shadows, ambient occlusion and anti-aliasing. If the frame rate is low, step down one preset. <kbd>P</kbd> shows the frame rate at any time.</p>
   </aside>
 
   <aside class="drawer" id="drawer-crew">
@@ -156,6 +157,7 @@
       <div class="k"><kbd>F</kbd></div><div class="d">Interact (hold)</div>
       <div class="k"><kbd>Tab</kbd></div><div class="d">Scoreboard</div>
       <div class="k"><kbd>Enter</kbd></div><div class="d">Chat (multiplayer)</div>
+      <div class="k"><kbd>P</kbd></div><div class="d">Frame rate readout</div>
       <div class="k"><kbd>Esc</kbd></div><div class="d">Pause, release the mouse</div>
     </div>
   </aside>
@@ -168,6 +170,7 @@
     <div class="sub lbl">Esc or Resume to continue</div>
     <div class="row"><label>Graphics</label><div class="seg" data-opt="quality"><button data-v="low">Low</button><button data-v="medium">Med</button><button data-v="high">High</button><button data-v="ultra">Ultra</button></div></div>
     <div class="row"><label>Dynamic res</label><div class="seg" data-opt="dynres"><button data-v="on">On</button><button data-v="off">Off</button></div></div>
+    <div class="row"><label>Frame rate</label><div class="seg" data-opt="perf"><button data-v="off">Hide</button><button data-v="on">Show</button></div></div>
     <div class="row"><label>Sensitivity</label><div class="rng"><input type="range" min="2" max="40" data-opt="sens"><span class="val" data-val="sens"></span></div></div>
     <div class="row"><label>Field of view</label><div class="rng"><input type="range" min="60" max="100" data-opt="fov"><span class="val" data-val="fov"></span></div></div>
     <div class="row"><label>Volume</label><div class="rng"><input type="range" min="0" max="100" data-opt="volume"><span class="val" data-val="volume"></span></div></div>
@@ -175,6 +178,9 @@
     <button class="wide" id="quit">Quit to menu</button>
   </div>
 </div>
+
+<!-- ============================================================ frame-rate readout (perf.js): over the pause screen, under the loading screen -->
+<div id="perf" class="hidden"><div class="top"><b></b><span class="u">fps</span><span class="ms"></span></div><canvas></canvas><div class="res"></div><div class="gpu"></div></div>
 
 <!-- ============================================================ loading -->
 <div id="loading" class="screen">

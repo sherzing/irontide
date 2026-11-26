@@ -59,6 +59,7 @@ Menu → Settings. Stored in the browser's local storage under the key `irontide
 | Callsign (`name`) | up to 16 characters; also under Multiplayer | `Player` and a random number |
 | Graphics quality (`quality`) | `low`, `medium`, `high`, `ultra` | `high` |
 | Dynamic resolution (`dynres`) | `on`, `off` | `on` |
+| Frame rate readout (`perf`), also the P key and the pause screen | `off`, `on` | `off` |
 | Mouse sensitivity (`sens`) | 2–40 | 14 |
 | Invert mouse up / down (`invertY`) | `off`, `on` | `off` |
 | Aim with the right mouse button (`aim`) | `toggle` (click on, click off), `hold` | `toggle` |
@@ -75,6 +76,7 @@ Address-bar parameters, mainly for testing:
 | --- | --- |
 | `?q=low` | Start with that graphics quality |
 | `?dr=0` | Dynamic resolution off |
+| `?perf=1` | Frame rate readout on |
 | `?auto=dm`, `tdm`, `campaign`, `range`, `multi` | Skip the menu and start that mode (`range` is Training) |
 | `&bots=20` | Bots for `auto=dm` or `auto=tdm` |
 | `&skill=easy` | Bot skill for `auto=dm` or `auto=tdm` |

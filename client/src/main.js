@@ -10,6 +10,7 @@ import { GameAudio } from './audio.js';
 import { ViewModel } from './viewmodel.js';
 import { Characters } from './characters.js';
 import { Hud } from './hud.js';
+import { Perf } from './perf.js';
 import { Game } from './game.js';
 import { LocalTransport, WsTransport } from './net.js';
 import { RoomList, count } from './rooms.js';
@@ -21,12 +22,13 @@ const $ = (s) => document.querySelector(s);
 const params = new URLSearchParams(location.search);
 
 // ---------------------------------------------------------------- settings
-const defaults = { mode: 'quick', quality: 'high', dynres: 'on', sens: 14, invertY: 'off', aim: 'toggle', fov: 78, volume: 80, name: 'Player' + ((Math.random() * 900 + 100) | 0),
+const defaults = { mode: 'quick', quality: 'high', dynres: 'on', perf: 'off', sens: 14, invertY: 'off', aim: 'toggle', fov: 78, volume: 80, name: 'Player' + ((Math.random() * 900 + 100) | 0),
   q: { mode: 'dm', level: DEFAULT_LEVEL, bots: 9, skill: 'normal' }, c: { skill: 'normal' }, m: { server: '', room: 'public', mode: 'tdm', level: DEFAULT_LEVEL, fill: 12 },
   look: { b: crewsOf(1)[0], r: crewsOf(2)[0], d: 'b' } };      // look: the crew worn on BLUE, on RED, and which of the two in a deathmatch
 let settings = structuredClone(defaults);
 try { const s = JSON.parse(localStorage.getItem('irontide') || '{}'); settings = { ...defaults, ...s, q: { ...defaults.q, ...s.q }, c: { ...defaults.c, ...s.c }, m: { ...defaults.m, ...s.m }, look: { ...defaults.look, ...s.look } }; } catch { /* storage unavailable */ }
 if (params.get('q')) settings.quality = params.get('q');
+if (params.get('perf')) settings.perf = params.get('perf') === '0' ? 'off' : 'on';
 if (LEVELS[params.get('level')]) settings.q.level = settings.m.level = params.get('level');
 if (!LEVELS[settings.q.level] || LEVELS[settings.q.level].training) settings.q.level = DEFAULT_LEVEL;
 if (!LEVELS[settings.m.level] || LEVELS[settings.m.level].training) settings.m.level = DEFAULT_LEVEL;
@@ -50,6 +52,7 @@ engine.dynamic = settings.dynres !== 'off' && params.get('dr') !== '0';
 const vm = new ViewModel(engine, fx);
 const chars = new Characters(engine);
 const hud = new Hud();
+const perf = new Perf($('#perf'), engine); perf.show(settings.perf === 'on');
 const loaded = new Map();
 let current = null;
 const kit = Promise.all([chars.load(), vm.load()]).then(() => { vm.root.visible = false; });      // loads beside the first level
@@ -85,6 +88,7 @@ function applySettings(path) {
   if (!path || path === 'quality') { if (engine.qualityName !== settings.quality) { engine.setQuality(settings.quality); setAnisotropy(engine.q.aniso); rain.build(); } }
   if (!path || path === 'dynres') { engine.dynamic = settings.dynres !== 'off' && params.get('dr') !== '0'; if (!engine.dynamic && engine.dyn !== 1) { engine.dyn = 1; engine.fit(); } }
   if (!path || path === 'volume') audio.setVolume(settings.volume / 100);
+  if (!path || path === 'perf') perf.show(settings.perf === 'on');
 }
 
 // ---------------------------------------------------------------- menu wiring
@@ -203,6 +207,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && game.active && game.ended && game.mode === 'campaign') toMenu();
   else if (e.code === 'Escape' && inMenu) openDrawer(null);
   else if (e.code === 'Enter' && inMenu && e.target.matches?.('.hero input[type=text]')) { e.target.blur(); $('#go').click(); }
+  if (e.code === 'KeyP' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && !e.target.matches?.('input')) setOpt('perf', settings.perf === 'on' ? 'off' : 'on');      // not while typing a callsign or a chat line
 });
 
 // ---------------------------------------------------------------- boot
@@ -234,8 +239,9 @@ function menuCamera(dt) {
   }
   cam.rotation.order = 'YXZ';
 }
-function loop() {
+function loop(now) {
   const dt = Math.min(clock.getDelta(), 0.1);
+  perf.frame(now);
   frames++; fpsT += dt; if (fpsT >= 0.5) { fps = Math.round(frames / fpsT); frames = 0; fpsT = 0; hud.netstat(`${fps} fps${game.net && !game.net.local ? ` · ${game.net.ping} ms` : ''} · ${engine.qualityName}${engine.dyn < 0.99 ? ` · ${Math.round(engine.dyn * 100)}% res` : ''}`); }
   if (inMenu && current) menuCamera(dt); else { engine.fade = 1; game.frame(dt); }
   if (inMenu && crewView && $('#drawer-crew').classList.contains('open')) crewView.frame(dt);
@@ -250,7 +256,7 @@ function loop() {
 requestAnimationFrame(loop);
 
 // debugging / automated tests
-window.__irontide = { game, engine, settings, playLocal, toMenu, vm, chars, fx, rain, G, crews: CREWS };
+window.__irontide = { game, engine, settings, playLocal, toMenu, vm, chars, fx, rain, G, perf, crews: CREWS };
 if (params.get('auto')) {
   const a = params.get('auto');
   if (a === 'campaign') startCampaign();

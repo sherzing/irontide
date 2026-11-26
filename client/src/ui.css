@@ -281,6 +281,17 @@ button.room:disabled .join { color: var(--dim); } button.room:disabled .join::af
 #chatlog div { padding: 2px calc(var(--px) * 8); background: rgba(6, 9, 11, 0.5); margin-top: 2px; animation: fadeout 9s forwards; display: table; }
 #chatlog div b { color: var(--acc-hi); font-weight: 600; margin-right: calc(var(--px) * 6); }
 #chat input { pointer-events: auto; width: 100%; margin-top: calc(var(--px) * 6); background: rgba(6, 9, 11, 0.85); border: 1px solid var(--acc); color: var(--ink); padding: calc(var(--px) * 6) calc(var(--px) * 9); font: inherit; outline: none; }
+/* frame-rate readout (perf.js): below the objective in a match, below the top bar in the menu */
+#perf { position: fixed; left: calc(var(--px) * 30); top: calc(var(--px) * 230); width: calc(var(--px) * 268); padding: calc(var(--px) * 9) calc(var(--px) * 12) calc(var(--px) * 8); pointer-events: none; background: rgba(6, 9, 11, 0.66); border-left: 2px solid var(--acc); font: 500 calc(var(--px) * 10.5) / 1.55 var(--f-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+#menu:not(.hidden) ~ #perf { left: calc(var(--px) * 34); top: calc(var(--px) * 66); }
+#perf .top { display: flex; align-items: baseline; gap: calc(var(--px) * 7); }
+#perf b { font: 700 calc(var(--px) * 34) / 0.9 var(--f-head); letter-spacing: 0.02em; color: var(--ink); }
+#perf.fair { border-left-color: var(--warn); } #perf.fair b { color: var(--warn); }
+#perf.slow { border-left-color: var(--danger); } #perf.slow b { color: var(--danger); }
+#perf .ms { margin-left: auto; }
+#perf canvas { display: block; width: 100%; height: calc(var(--px) * 34); margin: calc(var(--px) * 5) 0 calc(var(--px) * 4); }
+#perf .res.scaled { color: var(--warn); }
+#perf .gpu { text-transform: none; letter-spacing: 0.03em; overflow: hidden; text-overflow: ellipsis; color: var(--mute); }
 #netstat { position: absolute; left: calc(var(--px) * 30); bottom: calc(var(--px) * 7); font: 500 calc(var(--px) * 10.5) var(--f-mono); letter-spacing: 0.12em; text-transform: uppercase; color: rgba(242, 239, 232, 0.42); }
 
 #death { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: radial-gradient(ellipse at center, rgba(40, 0, 0, 0.12), rgba(22, 0, 0, 0.8)); }
