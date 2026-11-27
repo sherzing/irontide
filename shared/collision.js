@@ -242,6 +242,15 @@ export const LEAN = { reach: 0.4, drop: 0.07, roll: 0.15, time: 0.2, pad: 0.15, 
 export const leanBits = (k) => { const n = Math.min(7, Math.round(Math.abs(k) * 7)); return n ? (n << 5) | (k > 0 ? 256 : 0) : 0; };
 /** The lean in those flags: -1 (all the way left) to 1 (all the way right). */
 export const leanOf = (flags) => ((flags >> 5) & 7) / 7 * (flags & 256 ? 1 : -1);
+/**
+ * The slide: a crouch pressed in a sprint. The player goes on the way they were running, low and fast, and can shoot.
+ * It starts at `speed` m/s and falls evenly to `end` m/s over `time` s (4.5 m of floor); `rest` s pass before the next;
+ * the view is `eye` m above the feet. The soldier the others see has his head there (SLIDE_POSE in
+ * client/src/characters.js): `node scripts/aim-lab.mjs slide out.jpg` shows it and checks the head.
+ */
+export const SLIDE = { speed: 8, end: 3.2, time: 0.8, rest: 1, eye: 0.8 };
+/** Sliding, as part of a soldier's state flags (bit 9). The crouch bit is set with it: to bots and to the server a slider is a crouching player. */
+export const SLIDING = 512;
 const UPRIGHT = [0, 0];
 /** How far the head of a soldier is to the side of his feet, [x, z] in metres, when he looks along `yaw` with these flags. */
 export function leanShift(yaw, flags) {

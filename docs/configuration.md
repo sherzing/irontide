@@ -111,6 +111,8 @@ restart the server.
 | Bot skill levels and bot names | `SKILLS` and `BOT_NAMES` in `shared/bots.js` |
 | Player size, eye height, step height | `PLAYER` in `shared/collision.js` |
 | Leaning (Q and E): how far the head goes to the side, how fast, how much the view tilts, how close it comes to a wall | `LEAN` in `shared/collision.js` |
+| The slide (a crouch pressed in a sprint): its speed at the start and at the end, how long it lasts, the wait before the next, how low the view goes | `SLIDE` in `shared/collision.js` |
+| How the soldier sits when he slides | `SLIDE_POSE` in `client/src/characters.js`. `node scripts/aim-lab.mjs slide out.jpg` shows the pose, checks his head against the sliding view and his feet against the floor |
 | How the soldier bends when he leans | `LEAN_POSE` in `client/src/characters.js`. `node scripts/aim-lab.mjs lean out.jpg` shows the pose and checks his head against the leaning view |
 | Which levels exist | `LEVELS` in `shared/levels/index.js`. One with `training: true` is the Training mode's and is not offered for matches |
 | A level's recommended match size | `players: { min, max }` in `shared/levels/<id>.js` |

@@ -187,6 +187,13 @@ export class GameAudio {
     else if (surf === 'wood') { this.noise(d, t, 0.08, { type: 'lowpass', f: 700, gain: 1 }); this.tone(d, t, 0.09, { f: 120 + Math.random() * 30, f2: 80, gain: 0.8 }); }
     else { this.noise(d, t, 0.07, { type: 'lowpass', f: 1100 + Math.random() * 500, f2: 300, gain: 1 }); this.noise(d, t, 0.03, { type: 'highpass', f: 3000, gain: 0.12 }); }
   }
+  /** A slide: cloth and kit scraping over the floor, with a thump as the player goes down. */
+  slide() {
+    if (!this.ctx) return; const t = this.ctx.currentTime, d = this.out(null, 0.5); if (!d) return;
+    this.noise(d, t, 0.6, { type: 'bandpass', f: 1500, f2: 420, q: 0.7, gain: 0.9, attack: 0.04, buf: this.brown });
+    this.noise(d, t, 0.5, { type: 'highpass', f: 2600, gain: 0.1, attack: 0.05 });
+    this.tone(d, t, 0.12, { f: 95, f2: 55, gain: 0.7 });
+  }
   impact(surf, pos) {
     if (!this.ctx) return; const t = this.ctx.currentTime, d = this.out(pos, 0.8, 0.2); if (!d) return;
     if (surf === 'metal') { this.tone(d, t, 0.22, { f: 1800 + Math.random() * 2400, gain: 0.5 }); this.noise(d, t, 0.05, { type: 'highpass', f: 4000, gain: 0.8 }); }

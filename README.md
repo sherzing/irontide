@@ -28,6 +28,11 @@ Five weapons, all carried at once and picked with the number keys:
 look and shoot round a corner with the head and one shoulder showing and the rest behind it. Everyone else sees the
 lean, and their shots are tested against the soldier as he leans. Bots do not lean; they see and shoot at a player who does.
 
+**Ctrl** or **C** pressed in a sprint is a slide: the soldier goes on the way he was running, sitting low, for 0.8 s and
+4.5 m, and ends crouched. He can fire and aim in it, with a walking shooter's spread; the keys do not steer it; a jump
+ends it; the next slide has to wait a second. Everyone else sees him slide and shoots at him as he slides. Bots do not
+slide; to them a slider is a crouching player.
+
 Eight crews decide what a soldier wears, four for each side: Harbour Watch, Cutter Crew, Clearance Divers and Bar Pilots on
 BLUE; Wreckers, Night Shift, Dead Freight and Low Tide Runners on RED. A player picks one for each side under **Crew** in
 the menu; bots are dealt crews of their side. A crew is looks only (`shared/crews.js`).

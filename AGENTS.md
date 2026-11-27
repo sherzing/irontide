@@ -79,6 +79,12 @@ A change is finished when every check its files touch is **green**.
   must be where the leaning view is, or a player shoots from where nobody can hit him. With `npx vite --port 5177`:
   `node scripts/aim-lab.mjs lean out.jpg` shows the pose with what a shot hits and fails when head and view are more
   than 4 cm apart. Bots do not lean; their sight, their aim and `hitCharacter` follow a player who does.
+- **Slide.** A crouch pressed in a sprint (`SLIDE` in `shared/collision.js`; the movement is in `client/src/game.js`)
+  sits the soldier the others see down into `SLIDE_POSE` (`client/src/characters.js`); it travels in the state
+  flags (`SLIDING`, with the crouch bit, so bots and the server take a slider for a crouching player). The pose is
+  bent on top of the idle stance, so its angles are not what they look like: with `npx vite --port 5177`,
+  `node scripts/aim-lab.mjs slide out.jpg` shows it, prints where each leg joint is and fails when his head is more
+  than 6 cm from the sliding view or a foot is under the floor.
 - **Crews** (`shared/crews.js`) are looks only: the body texture repainted and kit hung on bones
   (`client/src/crewkit.js`). `node scripts/crew-sheet.mjs out.jpg` shows them all, front and back. BLUE's crews
   stay cold-coloured and RED's warm: that is how a team is told apart.
