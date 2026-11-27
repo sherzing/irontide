@@ -43,7 +43,8 @@ A change is finished when every check its files touch is **green**.
 - **Scripting a match.** `?auto=dm|tdm|campaign|range|multi` skips the menu. `window.__irontide` exposes `game`, `engine`,
   `settings` and `chars`. `game.debugInput = { yaw, pitch, keys: ['KeyW'], fire, ads }` plays for you.
 - **Frame rates.** Measure with `&dr=0`, because dynamic resolution hides the cost, and report the GPU and the
-  quality preset with the number.
+  quality preset with the number. `&perf=1` (in play: P) shows all of it on screen: frames a second, the slowest of
+  the last 240 frames, the resolution drawn, the preset and the GPU (`client/src/perf.js`).
 - **Levels.** Every spawn point and campaign enemy stands on open floor; sim-test checks it on every level.
   `dressing` is looks only: what a player can touch is a solid, so a scenery builder and its colliders are written
   as a pair (see `cargoPlane` in `shared/levels/crosswind.js`, and `openLeaves` in `shared/props.js`, which gives an
