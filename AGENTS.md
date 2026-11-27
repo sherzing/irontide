@@ -85,6 +85,10 @@ A change is finished when every check its files touch is **green**.
   bent on top of the idle stance, so its angles are not what they look like: with `npx vite --port 5177`,
   `node scripts/aim-lab.mjs slide out.jpg` shows it, prints where each leg joint is and fails when his head is more
   than 6 cm from the sliding view or a foot is under the floor.
+- **Bots** (`shared/bots.js`) look one way and go another when nobody is in sight: eyes on the corner ahead, a
+  glance aside (`GAIT`). The soldier model has only forward strides, so the client turns his legs the way he
+  travels and his waist to where he looks (`TWIST` in `client/src/characters.js`, players included); without that
+  he walks like a crab. `node scripts/sim-test.mjs` checks the paces and that the view turns without a jolt.
 - **Crews** (`shared/crews.js`) are looks only: the body texture repainted and kit hung on bones
   (`client/src/crewkit.js`). `node scripts/crew-sheet.mjs out.jpg` shows them all, front and back. BLUE's crews
   stay cold-coloured and RED's warm: that is how a team is told apart.

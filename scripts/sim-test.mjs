@@ -5,6 +5,7 @@ import { GameSim, TICK, MAX_PLAYERS } from '../shared/sim.js';
 import { LEVELS, DEFAULT_LEVEL, recommendedPlayers } from '../shared/levels/index.js';
 import { PLAYER, LEAN, leanBits, leanShift } from '../shared/collision.js';
 import { WEAPONS } from '../shared/weapons.js';
+import { GAIT } from '../shared/bots.js';
 
 const count = {};
 const tally = (m) => { count[m.t] = (count[m.t] || 0) + 1; };
@@ -116,6 +117,24 @@ if (!right) fail(`status of the team match: ${JSON.stringify(told)}`);
     console.log(`  a shooter killed with shots still waiting: ${r.heard - died} fired after his death`, ok ? 'OK' : '');
     if (!ok) fail(`${r.heard - died} shots were passed on after the shooter died`);
   }
+}
+// Bots with nobody in sight are on their rounds (GAIT in shared/bots.js). They must not all go at one pace, their eyes
+// must leave the way they are going (the corner ahead, a glance), and their view must turn without a jolt.
+{
+  const s = mk({ level: LEVELS.ropewalk ? 'ropewalk' : DEFAULT_LEVEL, mode: 'dm', fill: 10, skill: 'normal', scoreLimit: 1e9, timeLimit: 1e9 }); s.addPlayer(1, 'T'); s.removePlayer(1);
+  const wrap = (a) => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; }, was = new Map(), speeds = [], off = []; let jolt = 0;
+  for (let n = 0; n < 20 * 150; n++) {
+    s.tick(TICK);
+    for (const e of s.ents.values()) {
+      const p = was.get(e.id), calm = e.alive && !e.ai.visible, sp = Math.hypot(e.vx, e.vz), rate = p && p.calm && calm ? wrap(e.yaw - p.yaw) / TICK : null;
+      if (rate != null) { speeds.push(sp); if (sp > 2) off.push(Math.abs(wrap(e.yaw - Math.atan2(-e.vx, -e.vz)))); if (p.rate != null) jolt = Math.max(jolt, Math.abs(rate - p.rate) / TICK); }
+      was.set(e.id, { calm, yaw: e.yaw, rate });
+    }
+  }
+  const share = (lo, hi) => speeds.filter((v) => v >= lo && v < hi).length / speeds.length, pc = (v) => Math.round(v * 100), aside = off.sort((a, b) => a - b)[Math.floor(off.length * 0.9)] * 180 / Math.PI;
+  const walk = share(0.3, 3.4), jog = share(3.4, 5.2), sprint = share(5.2, 99), ok = walk >= 0.05 && jog >= 0.2 && sprint >= 0.05 && aside >= 15 && jolt <= GAIT.spin * 1.05;
+  console.log(`  10 bots on their rounds for 150 s: walking ${pc(walk)}% of the time, jogging ${pc(jog)}%, sprinting ${pc(sprint)}%; eyes off their way by ${aside.toFixed(0)}° or more a tenth of the time; the view's turning changes by at most ${jolt.toFixed(0)} rad/s² (allowed ${GAIT.spin})`, ok ? 'OK' : '');
+  if (!ok) fail(`bots on their rounds: walk ${pc(walk)}%, jog ${pc(jog)}%, sprint ${pc(sprint)}%, eyes aside ${aside.toFixed(0)}°, view jolt ${jolt.toFixed(0)} rad/s²`);
 }
 // A player who leans out of cover (Q, E) shows his head and hides the rest. A bot must see that head and be able to hit it;
 // while he stands upright behind the same cover it must see nothing.

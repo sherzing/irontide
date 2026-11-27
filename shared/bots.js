@@ -13,9 +13,26 @@ export const BOT_NAMES = ['Harlow', 'Voss', 'Kessler', 'Marek', 'Ito', 'Brandt',
   'Ames', 'Boone', 'Cray', 'Dunne', 'Eze', 'Falk', 'Grieve', 'Hobbs', 'Imani', 'Jarrah', 'Kowal', 'Lund', 'Mbeki', 'Nilsen', 'Oduya', 'Pike',
   'Ramos', 'Santos', 'Thorne', 'Usman', 'Vidal', 'Weir'];      // at least MAX_PLAYERS of them
 
+/**
+ * How a bot moves while it has nobody in sight. walk, jog, sprint: its paces in m/s (a soldier on screen walks below
+ * 3.4 m/s and runs above it, so no pace sits near that; a player sprints at 6.7); only bots of a match sprint.
+ * accel, brake: m/s² to speed up and to slow down. grip: m/s² sideways, which sets how tight a turn it can make at a
+ * speed (radius = speed² / grip): it slows for a corner and rounds it, swinging at most `wide` m off its route. reach: how far ahead on its route it steers
+ * for, m, plus `lead` s of travel. look: how far ahead on the route its eyes are, m: into a corner before it turns.
+ * ease, spin: how its view turns: `ease` times the angle left, per second, and that speed changes by at most `spin`
+ * rad/s². glance: every so many seconds it looks to one side for `glanceFor` s by up to `glanceBy` rad.
+ * rest: the chance that it stands and looks about when it gets where it was going, and for how many seconds.
+ */
+export const GAIT = { walk: 2.9, jog: 4.4, sprint: 6.3, accel: 9, brake: 11, grip: 16, wide: 0.4, reach: 1.2, lead: 0.3, look: 6, ease: 6, spin: 30,
+  glance: [2, 5.5], glanceFor: [0.45, 0.9], glanceBy: [0.5, 1.1], rest: 0.35, restFor: [0.8, 2.4] };
+
 const rnd = (a, b) => a + Math.random() * (b - a);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+/** The point m metres from a towards b: b itself if that is nearer. */
+const toward = (a, b, m) => { const d = Math.hypot(b.x - a.x, b.z - a.z); return d <= m ? b : { x: a.x + (b.x - a.x) / d * m, z: a.z + (b.z - a.z) / d * m }; };
 const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) / 0.75;
 const wrap = (a) => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
+const TICKS_APART = 0.11;      // s since a bot last steered along a route after which it is setting off anew
 
 export function makeAI(skill, mode = 'roam', post = null) {
   return {
@@ -23,6 +40,9 @@ export function makeAI(skill, mode = 'roam', post = null) {
     reactAt: 0, engageAt: 0, alertUntil: 0, nextSee: Math.random() * 0.3, path: null, pi: 0, repathAt: 0, goal: null,
     strafe: 0, strafeUntil: 0, burst: 0, pauseUntil: 0, nextShot: 0, ammo: 30, reloadUntil: 0,
     stuckT: 0, stuckX: 0, stuckZ: 0,
+    // on a route (GAIT): where this stretch of it began, the way and the speed it is going, its pace for this route and whether it sprints this stretch, when it last steered
+    sx: 0, sz: 0, head: 0, v: 0, pace: GAIT.jog, dash: false, steered: -9, own: rnd(0.93, 1.07),
+    yawV: 0, glance: 0, glanceAt: rnd(1, 4), glanceUntil: 0, restUntil: 0, lookYaw: 0, lookAt: 0,
   };
 }
 
@@ -101,28 +121,58 @@ export function botThink(sim, e, dt, now) {
     faceYaw = Math.atan2(-dx, -dz);
     facePitch = Math.atan2(ty - eyeY, d);
   } else if (!hold) {
-    let goal = null, moving = false;
+    let goal = null, moving = false;                          // moving: after someone it saw or heard, not just on its round
     if (ai.lastSeen && (now - ai.seenAt < 8 || ai.mode === 'hunt')) { goal = ai.lastSeen; moving = true; }
     else if (ai.mode === 'guard' && ai.post) { if (Math.hypot(e.x - ai.post.x, e.z - ai.post.z) > 2.5) goal = ai.post; }
-    else if (ai.mode !== 'guard') { if (!ai.goal) ai.goal = nav.randomPoint(); goal = ai.goal; }
+    else if (ai.mode !== 'guard' && now >= ai.restUntil) { if (!ai.goal) ai.goal = nav.randomPoint(); goal = ai.goal; }
     if (goal) {
       if (!ai.path || (moving && now > ai.repathAt)) {
-        ai.path = nav.path(e.x, e.z, goal.x, goal.z); ai.pi = 0; ai.repathAt = now + rnd(1.2, 2.2);
+        const fresh = !ai.path;
+        ai.path = nav.path(e.x, e.z, goal.x, goal.z); ai.pi = 0; ai.sx = e.x; ai.sz = e.z; ai.repathAt = now + rnd(1.2, 2.2);
         if (!ai.path) { ai.goal = null; ai.lastSeen = null; }
+        else if (fresh) { ai.pace = (Math.random() < 0.25 ? GAIT.walk : GAIT.jog) * ai.own; ai.dash = Math.random() < 0.4; }
       }
       if (ai.path) {
-        let wp = ai.path[ai.pi];
-        if (Math.hypot(wp.x - e.x, wp.z - e.z) < 0.5) {
-          ai.pi++;
-          if (ai.pi >= ai.path.length) { ai.path = null; ai.goal = null; if (goal === ai.lastSeen && ai.mode !== 'hunt') ai.lastSeen = null; wp = null; }
-          else wp = ai.path[ai.pi];
+        // Along the route: each stretch runs from (sx, sz) to a point of the path. The bot steers for a spot a little
+        // ahead of itself on the route, round the next corner if the way there is open, and has its eyes further ahead.
+        const P = ai.path; let wp = P[ai.pi], lx = wp.x - ai.sx, lz = wp.z - ai.sz, len = Math.hypot(lx, lz) || 1e-6;
+        let t = clamp(((e.x - ai.sx) * lx + (e.z - ai.sz) * lz) / (len * len), 0, 1), rem = (1 - t) * len;
+        if (rem < 0.35 || Math.hypot(wp.x - e.x, wp.z - e.z) < 0.5) {
+          ai.sx = wp.x; ai.sz = wp.z; ai.pi++; ai.dash = Math.random() < 0.4;
+          if (ai.pi >= P.length) {                            // there
+            ai.path = null; ai.goal = null; wp = null;
+            if (goal === ai.lastSeen && ai.mode !== 'hunt') ai.lastSeen = null;
+            if (ai.mode === 'roam' && Math.random() < GAIT.rest) ai.restUntil = now + rnd(GAIT.restFor[0], GAIT.restFor[1]);
+          } else { wp = P[ai.pi]; lx = wp.x - ai.sx; lz = wp.z - ai.sz; len = Math.hypot(lx, lz) || 1e-6; t = 0; rem = len; }
         }
         if (wp) {
-          const dx = wp.x - e.x, dz = wp.z - e.z, d = Math.hypot(dx, dz) || 1;
-          wx = dx / d; wz = dz / d; speed = ai.mode === 'guard' && !moving ? 2.2 : 4.4;
-          faceYaw = Math.atan2(-wx, -wz);
+          if (now - ai.steered > TICKS_APART) { const sp0 = Math.hypot(e.vx, e.vz); ai.v = sp0; ai.head = sp0 > 1 ? Math.atan2(-e.vx, -e.vz) : Math.atan2(-(wp.x - e.x), -(wp.z - e.z)); }      // setting off: as it is going, or straight for the route
+          ai.steered = now;
+          const next = P[ai.pi + 1], on = { x: ai.sx + lx * t, z: ai.sz + lz * t }, far = GAIT.reach + ai.v * GAIT.lead;
+          let spot = rem >= far || !next ? toward(on, wp, far) : toward(wp, next, far - rem);
+          if (spot !== wp && rem < far && !nav.clear(e.x, e.z, spot.x, spot.z)) spot = wp;      // something in the corner: by way of the corner itself
+          const dx = spot.x - e.x, dz = spot.z - e.z, d = Math.hypot(dx, dz) || 1e-6, off = wrap(Math.atan2(-dx, -dz) - ai.head);
+          // pace: this route's, a sprint on a long stretch or after someone far off, slower into a corner and when what it steers for is to its side
+          const run = ai.mode === 'roam' && (moving ? Math.hypot(goal.x - e.x, goal.z - e.z) > 14 : ai.dash && rem > 9 && ai.pace > 3.4);
+          const pace = ai.mode === 'guard' && !moving ? 2.2 : run ? GAIT.sprint * ai.own : moving ? GAIT.jog * ai.own : ai.pace;
+          let corner = 1.4;                                   // the speed it may still have at the end of this stretch: slow where the route ends,
+          if (next) { const nx = next.x - wp.x, nz = next.z - wp.z, bend = Math.acos(clamp((lx * nx + lz * nz) / (len * (Math.hypot(nx, nz) || 1e-6)), -1, 1)); corner = pace + (2.4 - pace) * Math.min(1, bend / 1.9); }      // slower the sharper the corner
+          const arc = Math.min(d / (2 * Math.max(0.05, Math.sin(Math.min(Math.abs(off), Math.PI / 2)))), GAIT.wide / Math.max(1e-3, 1 - Math.cos(off)));      // the radius of the turn that ends on the spot, and of the one that swings no wider than GAIT.wide
+          const want = Math.min(pace, Math.sqrt(corner * corner + 2 * GAIT.brake * rem), Math.sqrt(GAIT.grip * arc));
+          ai.v += clamp(want - ai.v, -GAIT.brake * dt * (Math.abs(off) > 1.2 ? 2.5 : 1), GAIT.accel * dt);      // its way is behind it: it stops short
+          const swing = GAIT.grip / Math.max(ai.v, 1) * dt; ai.head = wrap(ai.head + clamp(off, -swing, swing));
+          wx = -Math.sin(ai.head); wz = -Math.cos(ai.head); speed = ai.v;
+          // eyes: on the route GAIT.look m ahead, and now and then to one side
+          const eye = rem >= GAIT.look || !next ? toward(on, wp, GAIT.look) : toward(wp, next, GAIT.look - rem), ex = eye.x - e.x, ez = eye.z - e.z;
+          let look = Math.hypot(ex, ez) > 0.6 ? clamp(wrap(Math.atan2(-ex, -ez) - ai.head), -1.1, 1.1) : 0;
+          if (now > ai.glanceAt) { ai.glance = (Math.random() < 0.5 ? -1 : 1) * rnd(GAIT.glanceBy[0], GAIT.glanceBy[1]); ai.glanceUntil = now + rnd(GAIT.glanceFor[0], GAIT.glanceFor[1]); ai.glanceAt = ai.glanceUntil + rnd(GAIT.glance[0], GAIT.glance[1]); }
+          if (now < ai.glanceUntil && !run) look = clamp(look + ai.glance, -1.2, 1.2);
+          faceYaw = ai.head + look;
         }
       }
+    } else if (ai.mode === 'roam') {                          // standing where it was going: it looks about
+      if (now > ai.lookAt) { ai.lookYaw = e.yaw + rnd(-1.6, 1.6); ai.lookAt = now + rnd(0.6, 1.3); }
+      faceYaw = ai.lookYaw;
     }
   }
 
@@ -146,9 +196,12 @@ export function botThink(sim, e, dt, now) {
   }
 
   // ---------------- aim
+  // On someone, the view turns at the skill's full rate. With nobody in sight it eases: slower as it gets there, and it
+  // neither starts nor stops with a jolt.
   const turn = sk.turn * dt;
   const dy = wrap(faceYaw - e.yaw);
-  e.yaw = wrap(e.yaw + Math.max(-turn, Math.min(turn, dy)));
+  if (tgt && ai.visible) { const step = clamp(dy, -turn, turn); e.yaw = wrap(e.yaw + step); ai.yawV = step / dt; }
+  else { ai.yawV += clamp(clamp(dy * GAIT.ease, -sk.turn, sk.turn) - ai.yawV, -GAIT.spin * dt, GAIT.spin * dt); e.yaw = wrap(e.yaw + ai.yawV * dt); }
   e.pitch += Math.max(-turn, Math.min(turn, facePitch - e.pitch));
 
   // ---------------- fire

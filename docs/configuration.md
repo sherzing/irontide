@@ -109,6 +109,8 @@ restart the server.
 | How a killed soldier falls: weight, joint stops, friction, gravity | the constants at the top of `client/src/ragdoll.js` |
 | How long a body lies, and how many lie at once | `LINGER` and `MAX_LYING` in `client/src/characters.js` |
 | Bot skill levels and bot names | `SKILLS` and `BOT_NAMES` in `shared/bots.js` |
+| How bots move with nobody in sight: their paces, how they slow for a corner and round it, how far ahead they look, how often they glance aside or stand and look about, how their view turns | `GAIT` in `shared/bots.js` |
+| How far a soldier's waist turns when he looks one way and goes another | `TWIST` in `client/src/characters.js`. `node scripts/aim-lab.mjs volumes out.jpg` has him running with his eyes 50° to the left |
 | Player size, eye height, step height | `PLAYER` in `shared/collision.js` |
 | Leaning (Q and E): how far the head goes to the side, how fast, how much the view tilts, how close it comes to a wall | `LEAN` in `shared/collision.js` |
 | The slide (a crouch pressed in a sprint): its speed at the start and at the end, how long it lasts, the wait before the next, how low the view goes | `SLIDE` in `shared/collision.js` |

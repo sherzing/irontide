@@ -16,7 +16,7 @@ const { browser, page, errors } = await launch();
 const body = mode === 'volumes' || mode === 'lean' || mode === 'slide', R = leanBits(1), L = leanBits(-1);
 const STANCES = mode === 'lean' ? [['standing', 0, 0], ['leaning right', 0, R], ['leaning left', 0, L], ['leaning right, walking', 1.7, R], ['crouching', 0, 1], ['crouched, leaning right', 0, 1 | R], ['crouched, leaning left', 0, 1 | L]]
   : mode === 'slide' ? [['running', 6.7, 0], ['sliding, at its start', 8, 1 | SLIDING], ['sliding, at its end', 3.2, 1 | SLIDING], ['crouching', 0, 1]]
-  : [['standing', 0, 0], ['walking', 1.7, 0], ['running', 5.5, 0], ['crouching', 0, 1], ['crouched, moving', 2.2, 1]];
+  : [['standing', 0, 0], ['walking', 1.7, 0], ['running', 5.5, 0], ['running, eyes 50° to his left', 4.4, 0, 50], ['crouching', 0, 1], ['crouched, moving', 2.2, 1]];      // name, speed in m/s, state flags, degrees his view is to the left of his way
 await page.goto(`${base}/?auto=dm&bots=1&level=drydock&dr=0&q=${body ? 'low' : 'medium'}`);
 await page.waitForFunction(() => window.__irontide?.game.me?.alive && window.__irontide.chars.map.size > 0);
 await page.waitForTimeout(800);
@@ -50,12 +50,13 @@ const res = await page.evaluate(async ({ mode, body, states }) => {
     const views = [['front', 0], ['side', 90], ['back', 180]];
     const cw = 320, ch = 330, sheet = document.createElement('canvas'); sheet.width = cw * states.length; sheet.height = ch * views.length;
     const g = sheet.getContext('2d'), rows = [];
-    for (const [vi, [view, deg]] of views.entries()) for (const [si, [name, speed, flags]] of states.entries()) {
+    for (const [vi, [view, deg]] of views.entries()) for (const [si, [name, speed, flags, look = 0]] of states.entries()) {
       const face = 90 * rad, yaw = -face, fx = -Math.sin(yaw), fz = -Math.cos(yaw), n = { seen: 0, hit: 0, both: 0, head: 0, headHit: 0, headAsHead: 0 }, at = { side: 0, up: 0, ahead: 0 };
       for (let k = 0; k < (speed ? 6 : 1); k++) {
         const t0 = now() - game.interp, lead = 0.75 + k * 0.07, sx = x - fx * speed * lead, sz = z - fz * speed * lead;      // he is on the open spot when the picture is taken
-        c.push(t0, [c.id, sx, y, sz, yaw, 0, flags, 0, 100, 1]);
-        c.buf = [{ t: t0, x: sx, y, z: sz, yaw, pitch: 0, flags }, { t: t0 + 9, x: sx + fx * speed * 9, y, z: sz + fz * speed * 9, yaw, pitch: 0, flags }];
+        const eyes = yaw + look * rad;
+        c.push(t0, [c.id, sx, y, sz, eyes, 0, flags, 0, 100, 1]);
+        c.buf = [{ t: t0, x: sx, y, z: sz, yaw: eyes, pitch: 0, flags }, { t: t0 + 9, x: sx + fx * speed * 9, y, z: sz + fz * speed * 9, yaw: eyes, pitch: 0, flags }];
         c.placed = false; va = face + deg * rad; c.body.gun.visible = false;
         await wait(lead);
         await new Promise((r) => { after = r; });
