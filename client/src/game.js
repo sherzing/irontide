@@ -1,9 +1,10 @@
 // A play session: local player controller, weapons, and the client side of the sim protocol.
 import * as THREE from 'three';
-import { World, PLAYER, LEAN, leanBits } from '../../shared/collision.js';
+import { World, PLAYER, LEAN, leanBits, SLIDE, SLIDING } from '../../shared/collision.js';
 import { levelColliders } from '../../shared/props.js';
 import { WEAPONS, WEAPON_ORDER, spreadOf, newRecoil, kick, recoilStep, recoilPulled } from '../../shared/weapons.js';
 import { MAX_PLAYERS } from '../../shared/sim.js';
+import { Health } from './health.js';
 
 const V = () => new THREE.Vector3();
 const _a = V(), _b = V(), _c = V(), _d = V(), _n = V();
@@ -23,6 +24,7 @@ export class Game {
     this.me = null; this.match = null; this.obj = null; this.ended = false; this.msgQueue = []; this.ready = false; this.world = null; this.pendingHi = null;
     this.net.onMessage = (m) => this.onMessage(m);
     this.active = true; this.paused = false; this.sendT = 0; this.interp = transport.local ? 0.075 : 0.11;
+    this.health = transport.local ? null : new Health(this.audio);      // a server is told how this machine fares
     this.hud.show(true);
   }
   stop() {
@@ -38,6 +40,7 @@ export class Game {
       weapon: 'carbine', ammo: {}, reload: null, nextFire: 0, rec: newRecoil(), bolt: -1, stepDist: 0, surf: 'concrete',
       deadT: 0, killer: '', use: false, lastShot: -9, shake: 0, roll: 0, bob: 0, fov: this.settings.fov,
       lean: 0, leanOff: 0, airT: 0,                         // lean: -1 (left) to 1 (right), where the keys have it; leanOff: metres the head is to the right; airT: seconds off the ground
+      slide: 0, slideX: 0, slideZ: 0, slideAt: -9, sprinting: false,      // slide: seconds of slide left (SLIDE); slideX, slideZ: the way it goes; slideAt: when the last one ended
     };
     this.refill();
     this.vm.setWeapon('carbine'); this.vm.root.visible = true;
@@ -96,7 +99,7 @@ export class Game {
       case 'join': this.addEnt(m.e); break;
       case 'left': this.roster.delete(m.id); this.chars.remove(m.id); break;
       case 'snap': {
-        const t = performance.now() / 1000;
+        const t = performance.now() / 1000; this.health?.snap(t * 1000);
         for (const s of m.s) {
           if (me && s[0] === me.id) { me.hp = s[8]; continue; }
           this.chars.get(s[0])?.push(t, s);
@@ -105,7 +108,7 @@ export class Game {
       }
       case 'spawn': {
         if (!me || m.id !== me.id) break;
-        me.pos.set(m.p[0], m.p[1], m.p[2]); me.vel.set(0, 0, 0); me.yaw = m.yw; me.pitch = 0; me.alive = true; me.hp = 100; me.crouch = false; me.lean = me.leanOff = 0; me.reload = null; me.bolt = -1;
+        me.pos.set(m.p[0], m.p[1], m.p[2]); me.vel.set(0, 0, 0); me.yaw = m.yw; me.pitch = 0; me.alive = true; me.hp = 100; me.crouch = false; me.lean = me.leanOff = 0; me.slide = 0; me.reload = null; me.bolt = -1;
         me.deadT = 0; me.rec = newRecoil();
         if (!this.obj) this.refill(); else for (const k of WEAPON_ORDER) { const a = me.ammo[k]; a.mag = WEAPONS[k].mag; a.res = Math.max(a.res, WEAPONS[k].mag * 2); }
         this.vm.setWeapon(me.weapon); this.hud.death(null); this.engine.hurt = 0;
@@ -129,7 +132,7 @@ export class Game {
         this.hud.killfeed(k?.name || '?', v?.name || '?', m.w, m.hs, mine, m.by === m.id);
         this.chars.get(m.id)?.die(m.by === m.id ? null : me && m.by === me.id ? me.pos : this.chars.get(m.by)?.pos, m.w, m.hs);
         if (me && m.id === me.id) {
-          me.alive = false; me.deadT = 0; me.lean = 0; me.killer = m.by === m.id ? '' : k?.name || ''; me.reload = null; this.audio.ui('death'); this.mouse.l = this.mouse.r = false;
+          me.alive = false; me.deadT = 0; me.lean = 0; me.slide = 0; me.killer = m.by === m.id ? '' : k?.name || ''; me.reload = null; this.audio.ui('death'); this.mouse.l = this.mouse.r = false;
           // which way the player goes down: away from the shot, as far as there is room, onto either side
           const from = m.by === m.id ? null : this.chars.get(m.by)?.pos, dx = from ? me.pos.x - from.x : 0, dz = from ? me.pos.z - from.z : 0, l = Math.hypot(dx, dz) || 1;
           const wall = from && this.world.raycast(me.pos.x, me.pos.y + 0.3, me.pos.z, dx / l, 0, dz / l, 1, 'solid'), room = from ? clamp((wall ? wall.t : 1) - 0.35, 0, 0.5) : 0;
@@ -216,6 +219,8 @@ export class Game {
     }
     return Math.max(0, free - LEAN.pad);
   }
+  /** What spreadOf needs to know of the player. A slide shoots like a walk: its speed would spoil the aim, and it is no steady crouch. */
+  stance(ads, speed) { const me = this.me, slide = me.slide > 0; return { ads, speed: slide ? Math.min(speed, 4.6) : speed, bloom: me.rec.bloom, air: !me.grounded, crouch: me.crouch && !slide }; }
   tryFire(now) {
     const me = this.me, w = WEAPONS[me.weapon], a = me.ammo[me.weapon];
     if (me.reload || this.vm.drawT < 1 || now < me.nextFire || me.bolt >= 0) return;
@@ -224,7 +229,7 @@ export class Game {
     a.mag--; me.nextFire = now + 60 / w.rpm; me.lastShot = now;
     const cam = this.engine.camera, ads = this.vm.adsT;
     const speed = Math.hypot(me.vel.x, me.vel.z);
-    const spread = spreadOf(w, { ads, speed, bloom: me.rec.bloom, air: !me.grounded, crouch: me.crouch });
+    const spread = spreadOf(w, this.stance(ads, speed));
     const o = cam.getWorldPosition(_a);
     this.vm.fire(a.mag === 0);
     this.engine.camera.updateMatrixWorld(); this.vm.update({ dt: 0, speed, grounded: me.grounded, ads: this.adsWanted, sprint: false, look: { x: 0, y: 0 }, reload: -1, bolt: -1, hidden: this.scoped });
@@ -266,6 +271,7 @@ export class Game {
   frame(dt) {
     if (!this.active) return;
     this.net.update(dt);
+    { const report = this.health?.frame(performance.now(), this.net.ping); if (report) this.net.send(report); }
     if (this.pendingHi && !this.loadingHi) { const m = this.pendingHi; this.pendingHi = null; this.loadingHi = this.handleHi(m).finally(() => { this.loadingHi = null; }); }
     const me = this.me; if (!me || !this.world) return;
     const now = performance.now() / 1000, cam = this.engine.camera;
@@ -280,20 +286,33 @@ export class Game {
       const f = frozen ? 0 : (this.key('KeyW') ? 1 : 0) - (this.key('KeyS') ? 1 : 0), s = frozen ? 0 : (this.key('KeyD') ? 1 : 0) - (this.key('KeyA') ? 1 : 0);
       const sy = Math.sin(me.yaw), cy = Math.cos(me.yaw);
       let wx = -sy * f + cy * s, wz = -cy * f - sy * s; const wl = Math.hypot(wx, wz); if (wl > 0) { wx /= wl; wz /= wl; }
-      const wantCrouch = !frozen && (this.key('ControlLeft') || this.key('KeyC'));
-      if (wantCrouch) me.crouch = true; else if (me.crouch && !this.world.blocked(me.pos.x, me.pos.y, me.pos.z, PLAYER.height)) me.crouch = false;
+      const wantCrouch = !frozen && (this.key('ControlLeft') || this.key('KeyC')), v = me.vel;
+      // slide (SLIDE): a crouch pressed in a sprint carries the player on the way they were running
+      if (wantCrouch && !this.crouchHeld && me.sprinting && me.grounded && now - me.slideAt > SLIDE.rest) {
+        const sp = Math.hypot(v.x, v.z);
+        if (sp > 5) { me.slide = SLIDE.time; me.slideX = v.x / sp; me.slideZ = v.z / sp; this.audio.slide(); }
+      }
+      this.crouchHeld = wantCrouch;
+      const sliding = me.slide > 0;
+      if (wantCrouch || sliding) me.crouch = true; else if (me.crouch && !this.world.blocked(me.pos.x, me.pos.y, me.pos.z, PLAYER.height)) me.crouch = false;
       const w = WEAPONS[me.weapon];
       this.adsWanted = adsHeld && !me.reload && this.vm.drawT > 0.6;
       const sprint = !frozen && this.key('ShiftLeft') && f > 0 && !this.adsWanted && !me.crouch && !me.reload && now - me.lastShot > 0.25;
-      // leaning (Q, E): not in a sprint and not in the air, and at a walk
-      const leanTo = frozen || sprint || me.airT > 0.15 ? 0 : (this.key('KeyE') ? 1 : 0) - (this.key('KeyQ') ? 1 : 0);
+      me.sprinting = sprint;
+      // leaning (Q, E): not in a sprint, a slide or the air, and at a walk
+      const leanTo = frozen || sprint || sliding || me.airT > 0.15 ? 0 : (this.key('KeyE') ? 1 : 0) - (this.key('KeyQ') ? 1 : 0);
       const max = me.crouch ? 2.3 : this.adsWanted || leanTo ? 2.9 : sprint ? 6.7 : 4.6;
-      const v = me.vel;
-      if (me.grounded) {
+      const jump = !frozen && this.key('Space') && !this.jumpHeld;
+      let slideSpeed = 0;
+      if (sliding && me.grounded) {                          // the keys do not steer it; a jump ends it and keeps its speed
+        slideSpeed = SLIDE.end + (SLIDE.speed - SLIDE.end) * me.slide / SLIDE.time; v.x = me.slideX * slideSpeed; v.z = me.slideZ * slideSpeed;
+        me.slide -= dt;
+        if (jump) { v.y = 6.6; me.grounded = false; this.audio.step(me.surf, null, 0.8); }
+      } else if (me.grounded) {
         const sp = Math.hypot(v.x, v.z);
         if (sp > 0) { const drop = Math.max(sp, 2) * 9 * dt, k = Math.max(0, sp - drop) / sp; v.x *= k; v.z *= k; }
         const cur = v.x * wx + v.z * wz, add = clamp(max - cur, 0, 60 * dt); v.x += wx * add; v.z += wz * add;
-        if (!frozen && this.key('Space') && !this.jumpHeld) { v.y = 6.6; me.grounded = false; this.audio.step(me.surf, null, 0.8); }
+        if (jump) { v.y = 6.6; me.grounded = false; this.audio.step(me.surf, null, 0.8); }
       } else {
         const cur = v.x * wx + v.z * wz, add = clamp(max * 0.55 - cur, 0, 14 * dt); v.x += wx * add; v.z += wz * add;
       }
@@ -302,13 +321,14 @@ export class Game {
       const wasG = me.grounded, vyBefore = v.y, yBefore = me.pos.y;
       const res = this.world.moveCharacter(me.pos, v, dt, me.crouch ? PLAYER.crouchHeight : PLAYER.height, wasG);
       me.grounded = res.grounded; if (res.surf) me.surf = res.surf;
+      if (sliding && (me.slide <= 0 || !me.grounded || Math.hypot(v.x, v.z) < slideSpeed * 0.6)) { me.slide = 0; me.slideAt = now; }      // run out, off the ground, or into something
       me.airT = me.grounded ? 0 : me.airT + dt;
       if (wasG && me.grounded && me.pos.y - yBefore > 0.06) me.stepOff -= me.pos.y - yBefore;       // smooth step-ups
       if (!wasG && me.grounded && vyBefore < -5) { this.vm.landT = Math.min(1.5, -vyBefore / 9); me.shake += 0.15; this.audio.step(me.surf, null, 1.6); }
       me.stepOff += (0 - me.stepOff) * Math.min(1, dt * 14);
       const speed = Math.hypot(v.x, v.z);
-      if (me.grounded) { me.stepDist += speed * dt; const stride = sprint ? 2.5 : 2.0; if (me.stepDist > stride) { me.stepDist = 0; this.audio.step(me.surf, null, me.crouch ? 0.4 : sprint ? 1.2 : 0.8); } }
-      me.eye += ((me.crouch ? PLAYER.crouchEye : PLAYER.eye) - me.eye) * Math.min(1, dt * 12);
+      if (me.grounded && !sliding) { me.stepDist += speed * dt; const stride = sprint ? 2.5 : 2.0; if (me.stepDist > stride) { me.stepDist = 0; this.audio.step(me.surf, null, me.crouch ? 0.4 : sprint ? 1.2 : 0.8); } }
+      me.eye += ((me.slide > 0 ? SLIDE.eye : me.crouch ? PLAYER.crouchEye : PLAYER.eye) - me.eye) * Math.min(1, dt * 12);
       // the head follows the keys to the side, eased, and stops short of whatever is beside it
       {
         const step = dt / LEAN.time, k = Math.abs(me.lean = clamp(leanTo, me.lean - step, me.lean + step)), grow = LEAN.reach * step * 1.6;
@@ -327,9 +347,9 @@ export class Game {
       // ---- camera: the view as it is now, this frame's mouse movement included. A shot leaves along it.
       this.scoped = me.weapon === 'marksman' && this.vm.adsT > 0.82 && this.adsWanted;
       this.engine.scope += ((this.scoped ? 1 : 0) - this.engine.scope) * Math.min(1, dt * 22);
-      const targetFov = this.settings.fov + (w.adsFov - this.settings.fov) * this.vm.adsT + (sprint ? 5 : 0);
+      const targetFov = this.settings.fov + (w.adsFov - this.settings.fov) * this.vm.adsT + (sprint || me.slide > 0 ? 5 : 0);
       me.fov += (targetFov - me.fov) * Math.min(1, dt * 14);
-      me.roll += ((-s * 0.012 * Math.min(1, speed / 4)) - me.roll) * Math.min(1, dt * 8);
+      me.roll += ((me.slide > 0 ? 0.03 : -s * 0.012 * Math.min(1, speed / 4)) - me.roll) * Math.min(1, dt * 8);      // a slide tips the view a little
       me.bob += dt * (me.grounded ? speed : 0) * 1.9;
       const bobY = Math.sin(me.bob * 2) * 0.012 * Math.min(1, speed / 4.6) * (1 - this.vm.adsT * 0.7);
       me.shake = Math.max(0, me.shake - dt * 4);
@@ -352,13 +372,13 @@ export class Game {
       if (this.sendT >= 0.05) {
         this.sendT = 0;
         const r2 = (x) => Math.round(x * 100) / 100;
-        this.net.send({ t: 'st', p: [r2(me.pos.x), r2(me.pos.y), r2(me.pos.z)], yw: Math.round(me.yaw * 1000) / 1000, pt: Math.round(me.pitch * 1000) / 1000, f: (me.crouch ? 1 : 0) | (speed > 0.6 ? 2 : 0) | (sprint ? 4 : 0) | (me.grounded ? 0 : 8) | (this.adsWanted ? 16 : 0) | leanBits(lean), w: me.weapon });
+        this.net.send({ t: 'st', p: [r2(me.pos.x), r2(me.pos.y), r2(me.pos.z)], yw: Math.round(me.yaw * 1000) / 1000, pt: Math.round(me.pitch * 1000) / 1000, f: (me.crouch ? 1 : 0) | (speed > 0.6 ? 2 : 0) | (sprint ? 4 : 0) | (me.grounded ? 0 : 8) | (this.adsWanted ? 16 : 0) | leanBits(lean) | (me.slide > 0 ? SLIDING : 0), w: me.weapon });
       }
       // ---- hud
       const a = me.ammo[me.weapon];
       if (this.level.training) this.hud.rangeCard(this.card[me.weapon] || { name: w.name, shots: 0, hits: 0, head: 0, last: 0 });
       this.hud.setAmmo(a.mag, a.res, w.name, w.slot, a.mag <= w.mag * 0.25, { size: w.mag, reload: me.reload ? me.reload.t / me.reload.dur : -1, ammo: me.ammo });
-      const px = Math.tan(spreadOf(w, { ads: this.vm.adsT, speed, bloom: me.rec.bloom, air: !me.grounded, crouch: me.crouch })) * (innerHeight / 2) / Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
+      const px = Math.tan(spreadOf(w, this.stance(this.vm.adsT, speed))) * (innerHeight / 2) / Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
       this.hud.setCrosshair(Math.max(3, px), this.vm.adsT < 0.5 && !sprint && !me.reload);
     } else {
       // death camera: the legs go, the head comes down faster and faster and lands on its side with a small bounce

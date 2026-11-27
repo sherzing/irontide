@@ -96,7 +96,11 @@ restart the server.
 | How spread adds up; how fast a kick lands, how much of it sights and crouching leave, how fast the view comes back | `spreadOf` and `RECOIL` in `shared/weapons.js` |
 | What a player's shot can hit on a soldier | `HIT`, `HEAD` and `HEAD_R` in `client/src/characters.js` |
 | What a bot's shot can hit | `hitCharacter` in `shared/collision.js` |
-| Which shots the server refuses: rate, range, line of sight, and how far it trusts the client's own account | `humanFire` in `shared/sim.js` |
+| Which shots the server refuses: rate, range, line of sight, and how far it trusts the client's own account | `humanFire` and `judge` in `shared/sim.js` |
+| How many shots that arrive in one bunch the server accepts (a second's worth), and how fast it lets them out (twice the weapon's rate) | `credit` in `humanFire`, and `pace`, in `shared/sim.js` |
+| What the server logs as odd for a player, how often it looks, and how many messages a second a client may send | `ODD`, `LOOK` and `FLOOD` in `server/index.js` |
+| What a player's client reports to the server and how often; what counts as a slow frame or a late snapshot | `EVERY`, `SLOW` and `DRY` in `client/src/health.js` |
+| How many sounds play at once, and from what distance a shot loses its crack and its action | `VOICES` and `NEAR` in `client/src/audio.js` |
 | Crews: names, sides, colours, kit | `CREWS` in `shared/crews.js`; the shape of each kit item in `KIT` in `client/src/crewkit.js` |
 | The training course: steps, what the range officer says, where the targets stand | `campaign` and `TARGETS` in `shared/levels/range.js` |
 | Which weapons exist and their number keys | `WEAPON_ORDER` in `shared/weapons.js` |
@@ -105,8 +109,12 @@ restart the server.
 | How a killed soldier falls: weight, joint stops, friction, gravity | the constants at the top of `client/src/ragdoll.js` |
 | How long a body lies, and how many lie at once | `LINGER` and `MAX_LYING` in `client/src/characters.js` |
 | Bot skill levels and bot names | `SKILLS` and `BOT_NAMES` in `shared/bots.js` |
+| How bots move with nobody in sight: their paces, how they slow for a corner and round it, how far ahead they look, how often they glance aside or stand and look about, how their view turns | `GAIT` in `shared/bots.js` |
+| How far a soldier's waist turns when he looks one way and goes another | `TWIST` in `client/src/characters.js`. `node scripts/aim-lab.mjs volumes out.jpg` has him running with his eyes 50° to the left |
 | Player size, eye height, step height | `PLAYER` in `shared/collision.js` |
 | Leaning (Q and E): how far the head goes to the side, how fast, how much the view tilts, how close it comes to a wall | `LEAN` in `shared/collision.js` |
+| The slide (a crouch pressed in a sprint): its speed at the start and at the end, how long it lasts, the wait before the next, how low the view goes | `SLIDE` in `shared/collision.js` |
+| How the soldier sits when he slides | `SLIDE_POSE` in `client/src/characters.js`. `node scripts/aim-lab.mjs slide out.jpg` shows the pose, checks his head against the sliding view and his feet against the floor |
 | How the soldier bends when he leans | `LEAN_POSE` in `client/src/characters.js`. `node scripts/aim-lab.mjs lean out.jpg` shows the pose and checks his head against the leaning view |
 | Which levels exist | `LEVELS` in `shared/levels/index.js`. One with `training: true` is the Training mode's and is not offered for matches |
 | A level's recommended match size | `players: { min, max }` in `shared/levels/<id>.js` |
@@ -122,6 +130,7 @@ restart the server.
 | How hard the shipped textures are compressed, how large a prop's textures are, a prop's triangle budget | `QUALITY`, `TEX` and `BUDGET` in `scripts/optimize-assets.mjs`; `npm run optimize` then builds everything again |
 | How long a browser keeps the game's files before it asks whether they changed | `keep` in `server/index.js` |
 | How much a first visit may download, and how many shader programs may be compiled while drawing, before the load check fails | `BUDGET_MB` and `LATE` in `scripts/load-test.mjs` |
+| How much sound may go missing in a busy match before the sound check fails | `LOST_MS` in `scripts/sound-test.mjs` |
 | Dev server port and WebSocket proxy | `vite.config.js` |
 
 The options inside a `QUALITY` preset:

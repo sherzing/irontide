@@ -27,6 +27,7 @@ A change is finished when every check its files touch is **green**.
 | `shared/weapons.js`, a hit volume, or `humanFire` in `shared/sim.js` | `node scripts/ballistics.mjs` | Exit code 0 |
 | `install.sh`, `scripts/package.mjs` | `npm run package`, then `sh release/install.sh --from release/irontide.tar.gz --dir <new folder> --port <free port> --service none` | The first prints `started and joined OK`; the second exits 0 and prints `is installed in <new folder>` |
 | `client/` | `npm run build`, then `node scripts/play-test.mjs <out prefix> "http://localhost:<port>/?auto=dm&bots=9&level=<id>"` for each level the change can reach (the training range: `?auto=range`) | It prints `errors: 0`, and you have opened every screenshot it saved |
+| `client/src/audio.js`, or a new sound | `npm run build`, then `node scripts/sound-test.mjs http://localhost:<port>` (a minute) | Exit code 0 |
 | What a first visit downloads or compiles: `scripts/optimize-assets.mjs`, an asset, a loader, a material or shader, a render pass | `npm run build`, restart the server, then `node scripts/load-test.mjs http://localhost:<port>` | Exit code 0 |
 
 ## Gotchas
@@ -78,6 +79,16 @@ A change is finished when every check its files touch is **green**.
   must be where the leaning view is, or a player shoots from where nobody can hit him. With `npx vite --port 5177`:
   `node scripts/aim-lab.mjs lean out.jpg` shows the pose with what a shot hits and fails when head and view are more
   than 4 cm apart. Bots do not lean; their sight, their aim and `hitCharacter` follow a player who does.
+- **Slide.** A crouch pressed in a sprint (`SLIDE` in `shared/collision.js`; the movement is in `client/src/game.js`)
+  sits the soldier the others see down into `SLIDE_POSE` (`client/src/characters.js`); it travels in the state
+  flags (`SLIDING`, with the crouch bit, so bots and the server take a slider for a crouching player). The pose is
+  bent on top of the idle stance, so its angles are not what they look like: with `npx vite --port 5177`,
+  `node scripts/aim-lab.mjs slide out.jpg` shows it, prints where each leg joint is and fails when his head is more
+  than 6 cm from the sliding view or a foot is under the floor.
+- **Bots** (`shared/bots.js`) look one way and go another when nobody is in sight: eyes on the corner ahead, a
+  glance aside (`GAIT`). The soldier model has only forward strides, so the client turns his legs the way he
+  travels and his waist to where he looks (`TWIST` in `client/src/characters.js`, players included); without that
+  he walks like a crab. `node scripts/sim-test.mjs` checks the paces and that the view turns without a jolt.
 - **Crews** (`shared/crews.js`) are looks only: the body texture repainted and kit hung on bones
   (`client/src/crewkit.js`). `node scripts/crew-sheet.mjs out.jpg` shows them all, front and back. BLUE's crews
   stay cold-coloured and RED's warm: that is how a team is told apart.
@@ -96,6 +107,15 @@ A change is finished when every check its files touch is **green**.
   `public/assets/`: AVIF textures, `.sky` skies (`client/src/sky.js` reads them) and `<id>.lod.gltf` props. Run it
   after adding a texture, model or sky, then rebuild. After a first build or a changed setting it rebuilds the whole
   folder: restart a running Vite, which lists `public/` when it starts.
+- **Sound** is synthesised (`client/src/audio.js`). A one-shot is a voice: `out()` opens it, `noise()` and `tone()`
+  play into it, and its nodes leave the audio graph when it ends. A node left connected costs audio time until the
+  browser's next big garbage collection, and the sound of a busy match breaks up, but only after about 25 s: a
+  short listen proves nothing, `node scripts/sound-test.mjs <url>` does.
+- **Odd.** "My shots were swallowed" and "the sound broke up" are answered by the server's log. Every 10 s it
+  prints a `!` line for each player something odd happened to, and a `sums for` line when they leave: shots that
+  arrived in a bunch or were refused and hits refused (`e.odd`, counted by `humanFire` in `shared/sim.js`), messages
+  dropped or kept back (`server/index.js`), and what the player's own client reports (`client/src/health.js`): sound
+  not played, slow frames, late snapshots, ping. A new way for the server to drop something gets a counter there.
 - **Loading.** A first visit costs megabytes and shader programs; `node scripts/load-test.mjs <url>` prints both.
   A lit program takes about 0.1 s to compile, so keep them few. A number written into shader text makes one program
   per value: pass it as a uniform (`uSurf` in `patchSurface`). A pass that draws the scene under other lights than

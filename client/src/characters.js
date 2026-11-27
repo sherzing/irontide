@@ -6,7 +6,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { loadModel } from './levelbuild.js';
 import { canvasTex } from './materials.js';
 import { Ragdoll, SHOVE } from './ragdoll.js';
-import { raySphere, rayCapsule, CROUCH_SCALE, LEAN, leanOf } from '../../shared/collision.js';
+import { raySphere, rayCapsule, CROUCH_SCALE, LEAN, leanOf, SLIDE, SLIDING } from '../../shared/collision.js';
 import { CREWS } from '../../shared/crews.js';
 import { repaint, kitFor, hang } from './crewkit.js';
 
@@ -31,12 +31,28 @@ const _head = new THREE.Vector3();
  * side: where the leaning player's view is. `node scripts/aim-lab.mjs lean out.jpg` shows the pose and checks the head.
  */
 export const LEAN_POSE = { pelvis: 6, spine: 9, neck: 12 };
+/**
+ * A slide (a crouch pressed in a sprint), in place of the stride: the soldier sits back on the floor, one leg out ahead
+ * and the other knee up, rifle level. Degrees, each joint on top of the one before; a positive angle tips the top of a
+ * joint back and swings what hangs below it ahead. hips: the pelvis; spine: each of the three spine joints; neck: the
+ * neck and again the head; arms: each shoulder; lead, tuck: thigh and knee of the leg out ahead and of the one drawn up.
+ * Then the hips go where that puts his head at the sliding player's view, SLIDE.eye over his feet:
+ * `node scripts/aim-lab.mjs slide out.jpg` shows the pose and checks the head.
+ */
+export const SLIDE_POSE = { hips: 50, spine: -10, neck: -8, arms: -20, lead: [5, 16], tuck: [86, -84] };
+/**
+ * A soldier who looks one way and goes another (a glance, eyes on the corner ahead, a diagonal run): his legs go the way
+ * he travels and his body turns from the waist to where he looks. most: the furthest the waist turns, radians;
+ * ahead: beyond this angle between view and travel he is stepping sideways or backwards, and faces where he looks as a
+ * whole; from: the speed in m/s from which the legs take the way he travels.
+ */
+const TWIST = { most: 1.05, ahead: 1.4, from: 1.2 };
 const LEG = 0.8, HIPS_MOST = 0.3;                // hip joint to ankle, and the furthest the hips go to the side, metres
-const FWD = new THREE.Vector3(0, 0, -1), RAD = Math.PI / 180;
-const _turn = new THREE.Quaternion(), _inv = new THREE.Quaternion(), _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion(), _qc = new THREE.Quaternion(), _qd = new THREE.Quaternion(), _v = new THREE.Vector3(), _s = new THREE.Vector3();
-/** Turns a bone by `angle` round the way the soldier faces. parent: how the bone's parent is turned in the soldier's own frame; `out` gets the same for the bone. */
-function turn(bone, parent, angle, out) {
-  _turn.setFromAxisAngle(FWD, angle); _inv.copy(parent).invert();
+const FWD = new THREE.Vector3(0, 0, -1), RIGHT = new THREE.Vector3(1, 0, 0), UP = new THREE.Vector3(0, 1, 0), RAD = Math.PI / 180;
+const _turn = new THREE.Quaternion(), _inv = new THREE.Quaternion(), _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion(), _qc = new THREE.Quaternion(), _qd = new THREE.Quaternion(), _qe = new THREE.Quaternion(), _v = new THREE.Vector3(), _s = new THREE.Vector3();
+/** Turns a bone by `angle` round `axis` of the soldier's own frame (the way he faces, unless given). parent: how the bone's parent is turned in that frame; `out` gets the same for the bone. */
+function turn(bone, parent, angle, out, axis = FWD) {
+  _turn.setFromAxisAngle(axis, angle); _inv.copy(parent).invert();
   bone.quaternion.premultiply(parent).premultiply(_turn).premultiply(_inv);
   return out.multiplyQuaternions(parent, bone.quaternion);
 }
@@ -85,20 +101,41 @@ class Body {
     this.rag = new Ragdoll(bones, this.gun);
     // the frame the hips are placed in, seen from the soldier's own (x his right, y up, -z ahead): how it is turned, and how many of its units make a metre
     model.updateMatrixWorld(true); this.frame = new THREE.Quaternion(); bones.Hips.parent.matrixWorld.decompose(_v, this.frame, _s); this.units = 1 / _s.x;
-    this.bent = ['Hips', 'Spine', 'Spine1', 'Spine2', 'Neck', 'LeftUpLeg', 'RightUpLeg', 'LeftFoot', 'RightFoot'].map((n) => ({ bone: bones[n], q: new THREE.Quaternion(), p: new THREE.Vector3() }));
-    this.column = ['Head', 'Neck', 'Spine2', 'Spine1', 'Spine', 'Hips'].map((n) => bones[n]); this.frameX = _v.x;
+    this.bent = ['Hips', 'Spine', 'Spine1', 'Spine2', 'Neck', 'Head', 'LeftShoulder', 'RightShoulder', 'LeftUpLeg', 'RightUpLeg', 'LeftLeg', 'RightLeg', 'LeftFoot', 'RightFoot'].map((n) => ({ bone: bones[n], q: new THREE.Quaternion(), p: new THREE.Vector3() }));      // what lean() and slide() move
+    this.column = ['Head', 'Neck', 'Spine2', 'Spine1', 'Spine', 'Hips'].map((n) => bones[n]); this.frameAt = _v.clone();
     this.leant = false;
   }
-  /** How far to his right the middle of the soldier's head is, metres. Worked out from the joints, which each turn and place the next. */
-  headSide() {
-    _v.fromArray(HEAD);
-    for (const bone of this.column) _v.applyQuaternion(bone.quaternion).add(bone.position);
-    return _v.applyQuaternion(this.frame).x / this.units + this.frameX;
+  /** Where the middle of the soldier's head is in his own frame, metres: x to his right, y up from his feet, -z ahead. Worked out from the joints, which each turn and place the next. */
+  headAt(out) {
+    out.fromArray(HEAD);
+    for (const bone of this.column) out.applyQuaternion(bone.quaternion).add(bone.position);
+    return out.applyQuaternion(this.frame).divideScalar(this.units).add(this.frameAt);
   }
-  /** Leans the pose the mixer wrote: k from -1 (all the way left) to 1 (right). See LEAN_POSE. */
+  /** How far to his right the middle of his head is, metres. */
+  headSide() { return this.headAt(_v).x; }
+  /** Notes the pose the mixer wrote, before twist(), lean() or slide() change it: unlean() puts it back. */
+  keep() { for (const s of this.bent) { s.q.copy(s.bone.quaternion); s.p.copy(s.bone.position); } this.leant = true; }
+  /** Turns the body from the waist by t radians to his left, a third at each spine joint (TWIST). After keep(). */
+  twist(t) {
+    const b = this.bones, a = t / 3;
+    turn(b.Spine2, turn(b.Spine1, turn(b.Spine, turn(b.Hips, this.frame, 0, _qa, UP), a, _qb, UP), a, _qc, UP), a, _qb, UP);
+  }
+  /** Sits the pose the mixer wrote down into a slide: k from 0 (not at all) to 1. See SLIDE_POSE. After keep(). */
+  slide(k) {
+    const b = this.bones, P = SLIDE_POSE, a = (deg) => deg * RAD * k;
+    const hips = turn(b.Hips, this.frame, a(P.hips), _qa, RIGHT);
+    const chest = turn(b.Spine2, turn(b.Spine1, turn(b.Spine, hips, a(P.spine), _qb, RIGHT), a(P.spine), _qc, RIGHT), a(P.spine), _qe, RIGHT);
+    turn(b.Head, turn(b.Neck, chest, a(P.neck), _qb, RIGHT), a(P.neck), _qc, RIGHT);
+    for (const side of ['Left', 'Right']) {
+      turn(b[side + 'Shoulder'], chest, a(P.arms), _qb, RIGHT);
+      const [thigh, knee] = side === 'Left' ? P.lead : P.tuck;
+      turn(b[side + 'Leg'], turn(b[side + 'UpLeg'], hips, a(thigh), _qb, RIGHT), a(knee), _qc, RIGHT);
+    }
+    const head = this.headAt(_v);                             // the hips go where his head then is at the sliding view
+    b.Hips.position.add(_s.set(-head.x * k, (SLIDE.eye - head.y) * k, -head.z * k).applyQuaternion(_inv.copy(this.frame).invert()).multiplyScalar(this.units));
+  }
+  /** Leans the pose the mixer wrote: k from -1 (all the way left) to 1 (right). See LEAN_POSE. After keep(). */
   lean(k) {
-    for (const s of this.bent) { s.q.copy(s.bone.quaternion); s.p.copy(s.bone.position); }
-    this.leant = true;
     const b = this.bones, P = LEAN_POSE, pelvis = P.pelvis * RAD * k, spine = P.spine * RAD * k, was = this.headSide();
     const hips = turn(b.Hips, this.frame, pelvis, _qa);
     turn(b.Neck, turn(b.Spine2, turn(b.Spine1, turn(b.Spine, hips, spine, _qb), spine, _qc), spine, _qb), -P.neck * RAD * k, _qc);
@@ -110,7 +147,7 @@ class Body {
       turn(b[side + 'Foot'], _qc.multiplyQuaternions(leg, b[side + 'Leg'].quaternion), -slant, _qd);
     }
   }
-  /** Takes the lean back out. The mixer writes a bone only when its animation moved it on, so a lean left in would add up. */
+  /** Takes twist, lean and slide back out. The mixer writes a bone only when its animation moved it on, so a pose left in would add up. */
   unlean() {
     if (!this.leant) return;
     for (const s of this.bent) { s.bone.quaternion.copy(s.q); s.bone.position.copy(s.p); }
@@ -163,7 +200,7 @@ class Char {
     const tex = canvasTex(256, (g) => { g.clearRect(0, 0, 256, 256); g.font = '600 34px system-ui, sans-serif'; g.textAlign = 'center'; g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillText(info.name, 129, 141); g.fillStyle = TEAM_CSS[info.team || 0]; g.fillText(info.name, 128, 140); });
     this.tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: false }));
     this.tag.scale.set(1.5, 1.5, 1); this.tag.visible = false; owner.engine.fx.add(this.tag);
-    this.buf = []; this.alive = false; this.flags = 0; this.pitch = 0; this.lean = 0; this.speed = 0; this.vx = 0; this.vz = 0; this.placed = false;
+    this.buf = []; this.alive = false; this.flags = 0; this.pitch = 0; this.lean = 0; this.slide = 0; this.twist = 0; this.speed = 0; this.vx = 0; this.vz = 0; this.placed = false;
     this.pos = new THREE.Vector3(); this.yaw = 0; this.hp = 100; this.weapon = 0;
   }
   push(t, s) {
@@ -181,7 +218,7 @@ class Char {
   /** A ray (o, unit d) against the soldier as he stands on the screen: { t, zone } for the nearest hit within maxT, or null. */
   hit(o, d, maxT) {
     const p = this.pos, body = this.body, tall = body.root.scale.y;
-    const near = raySphere(o.x, o.y, o.z, d.x, d.y, d.z, p.x, p.y + 0.9 * tall, p.z, 1.25);
+    const near = raySphere(o.x, o.y, o.z, d.x, d.y, d.z, p.x, p.y + 0.9 * tall, p.z, 1.25 + this.slide * 0.3);      // a slider's legs reach further
     if (near < 0 || near > maxT) return null;                                    // not even near him
     body.root.updateMatrixWorld(true);
     const b = body.bones;
@@ -216,17 +253,22 @@ class Char {
     const px = this.pos.x, pz = this.pos.z;
     this.pos.set(a.x + (c.x - a.x) * k, a.y + (c.y - a.y) * k, a.z + (c.z - a.z) * k);
     this.yaw = lerpAngle(a.yaw, c.yaw, Math.min(1, k)); this.pitch = a.pitch + (c.pitch - a.pitch) * Math.min(1, k); this.flags = c.flags;
-    if (!this.placed) { this.placed = true; this.speed = this.vx = this.vz = 0; this.lean = leanOf(this.flags); }      // just put down somewhere: that was not a movement
+    if (!this.placed) { this.placed = true; this.speed = this.vx = this.vz = 0; this.lean = leanOf(this.flags); this.slide = 0; this.twist = 0; }      // just put down somewhere: that was not a movement
     else {
       const inv = 1 / Math.max(dt, 1e-3), ease = Math.min(1, dt * 8), vx = (this.pos.x - px) * inv, vz = (this.pos.z - pz) * inv;
       this.speed += (Math.min(Math.hypot(vx, vz), 9) - this.speed) * ease; this.vx += (vx - this.vx) * ease; this.vz += (vz - this.vz) * ease;
     }
+    const crouch = this.flags & 1, sliding = this.flags & SLIDING ? 1 : 0;
+    // his legs go the way he travels, his body turns from the waist to where he looks (TWIST)
+    let legs = 0;
+    if (this.speed > TWIST.from) { const off = lerpAngle(this.yaw, Math.atan2(-this.vx, -this.vz), 1) - this.yaw; if (sliding || Math.abs(off) < TWIST.ahead) legs = THREE.MathUtils.clamp(off, -TWIST.most, TWIST.most); }
+    this.twist += (legs - this.twist) * Math.min(1, dt * 8);
     const root = body.root;
-    root.visible = true; root.position.copy(this.pos); root.rotation.y = this.yaw;
-    const crouch = this.flags & 1;
-    root.scale.y += ((crouch ? CROUCH_SCALE : 1) - root.scale.y) * Math.min(1, dt * 12);
+    root.visible = true; root.position.copy(this.pos); root.rotation.y = this.yaw + this.twist;
+    this.slide += (sliding - this.slide) * Math.min(1, dt * (sliding ? 14 : 9));
+    root.scale.y += ((crouch && !sliding ? CROUCH_SCALE : 1) - root.scale.y) * Math.min(1, dt * 12);      // a slide is a pose of its own (SLIDE_POSE), not a squashed stride
     // locomotion blend
-    const s = this.speed, w = body.w, act = body.act;
+    const s = sliding ? 0 : this.speed, w = body.w, act = body.act;
     const tw = { Idle: s < 0.4 ? 1 : 0, Walk: s >= 0.4 && s < 3.4 ? 1 : 0, Run: s >= 3.4 ? 1 : 0 };
     for (const n of ['Idle', 'Walk', 'Run']) { w[n] += (tw[n] - w[n]) * Math.min(1, dt * 9); act[n]?.setEffectiveWeight(w[n]); }
     if (act.Walk) act.Walk.timeScale = THREE.MathUtils.clamp(s / 1.7, 0.6, 1.8);
@@ -237,7 +279,10 @@ class Char {
       body.unlean();
       body.mixer.update(body.animT); body.animT = 0;
       body.bones.Spine1.rotation.x += -this.pitch * 0.7;               // on top of the pose the mixer just wrote
-      if (Math.abs(this.lean) > 0.01) body.lean(this.lean);
+      const twisted = Math.abs(this.twist) > 0.01, leaning = Math.abs(this.lean) > 0.01, slid = this.slide > 0.01;
+      if (twisted || leaning || slid) body.keep();
+      if (twisted) body.twist(-this.twist);                              // the legs turned by this.twist with the whole soldier: the waist gives it back
+      if (leaning) body.lean(this.lean); else if (slid) body.slide(this.slide);      // a slider does not lean
     }
     this.tag.visible = showTag;
     if (showTag) { const side = this.lean * LEAN.reach; this.tag.position.set(this.pos.x + Math.cos(this.yaw) * side, this.pos.y + (crouch ? 1.75 : 2.2), this.pos.z - Math.sin(this.yaw) * side); }      // over his head, also when he leans
