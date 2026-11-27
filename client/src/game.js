@@ -4,6 +4,7 @@ import { World, PLAYER, LEAN, leanBits } from '../../shared/collision.js';
 import { levelColliders } from '../../shared/props.js';
 import { WEAPONS, WEAPON_ORDER, spreadOf, newRecoil, kick, recoilStep, recoilPulled } from '../../shared/weapons.js';
 import { MAX_PLAYERS } from '../../shared/sim.js';
+import { Health } from './health.js';
 
 const V = () => new THREE.Vector3();
 const _a = V(), _b = V(), _c = V(), _d = V(), _n = V();
@@ -23,6 +24,7 @@ export class Game {
     this.me = null; this.match = null; this.obj = null; this.ended = false; this.msgQueue = []; this.ready = false; this.world = null; this.pendingHi = null;
     this.net.onMessage = (m) => this.onMessage(m);
     this.active = true; this.paused = false; this.sendT = 0; this.interp = transport.local ? 0.075 : 0.11;
+    this.health = transport.local ? null : new Health(this.audio);      // a server is told how this machine fares
     this.hud.show(true);
   }
   stop() {
@@ -96,7 +98,7 @@ export class Game {
       case 'join': this.addEnt(m.e); break;
       case 'left': this.roster.delete(m.id); this.chars.remove(m.id); break;
       case 'snap': {
-        const t = performance.now() / 1000;
+        const t = performance.now() / 1000; this.health?.snap(t * 1000);
         for (const s of m.s) {
           if (me && s[0] === me.id) { me.hp = s[8]; continue; }
           this.chars.get(s[0])?.push(t, s);
@@ -266,6 +268,7 @@ export class Game {
   frame(dt) {
     if (!this.active) return;
     this.net.update(dt);
+    { const report = this.health?.frame(performance.now(), this.net.ping); if (report) this.net.send(report); }
     if (this.pendingHi && !this.loadingHi) { const m = this.pendingHi; this.pendingHi = null; this.loadingHi = this.handleHi(m).finally(() => { this.loadingHi = null; }); }
     const me = this.me; if (!me || !this.world) return;
     const now = performance.now() / 1000, cam = this.engine.camera;

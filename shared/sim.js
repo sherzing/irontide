@@ -51,7 +51,8 @@ export class GameSim {
   /** crew: what they wear (shared/crews.js): looks only. */
   newEnt(id, name, bot, team, crew) {
     const e = { id, name, bot, team, crew, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0, pitch: 0, hp: 100, alive: false, flags: 0,
-      weapon: 'carbine', kills: 0, deaths: 0, respawnAt: 0, lastHurt: -99, lastFire: -99, shots: 0, grounded: true, use: false, ai: null, gone: 0 };
+      weapon: 'carbine', kills: 0, deaths: 0, respawnAt: 0, lastHurt: -99, lastFire: -99, shots: 0, credit: 0, creditAt: -99, fireQ: [], grounded: true, use: false, ai: null, gone: 0,
+      odd: { late: 0, dropped: 0, dead: 0, gone: 0, range: 0, sight: 0 } };      // odd: shots and hits of a human that were delayed or refused (humanFire)
     this.ents.set(id, e);
     return e;
   }
@@ -148,7 +149,7 @@ export class GameSim {
       if (this.nav.walkable(x, z) && !this.world.blocked(x, e.y, z, PLAYER.height)) { e.x = x; e.z = z; }
     }
     e.yaw = s.yaw || 0; e.pitch = 0; e.vx = e.vy = e.vz = 0;
-    e.hp = 100; e.alive = true; e.lastHurt = -99; e.flags = 0; e.grounded = true;
+    e.hp = 100; e.alive = true; e.lastHurt = -99; e.flags = 0; e.grounded = true; e.fireQ.length = 0;
     if (e.ai) { const ai = e.ai; ai.target = null; ai.visible = false; ai.lastSeen = null; ai.path = null; ai.goal = null; ai.ammo = WEAPONS[e.weapon].mag; ai.reloadUntil = 0; }
     this.out.broadcast({ t: 'spawn', id: e.id, p: [r2(e.x), r2(e.y), r2(e.z)], yw: r3(e.yaw) });
   }
@@ -177,19 +178,33 @@ export class GameSim {
   }
   /**
    * A human's shot. Their own client decided what it hit; this only refuses what cannot be: a weapon firing faster than it
-   * can, a target out of range, a target behind a wall.
+   * can, a target out of range, a target behind a wall. What it refuses or delays it counts in e.odd.
    */
   humanFire(e, m) {
     const w = WEAPONS[m.w];
-    if (!e.alive || !w || this.phase !== 'play') return;
-    // Rate: shots are paid from an account that fills at the weapon's rate and holds a few. This clock moves in 50 ms
-    // ticks and the network bunches messages, so the time between two honest shots says little.
-    const rate = (w.rpm / 60) * 1.1, most = 1 + rate * 0.15;
-    e.shots = Math.min(most, e.shots + (this.time - e.lastFire) * rate); e.lastFire = this.time;
-    if (e.shots < 1) return;
-    e.shots -= 1;
-    const pellets = w.pellets || 1, ends = Array.isArray(m.e) ? m.e : [];
-    if (Array.isArray(m.o)) this.out.broadcast({ t: 'fire', id: e.id, w: m.w, o: m.o, e: ends.slice(0, pellets) }, e.id);
+    if (!w || this.phase !== 'play') return;
+    if (!e.alive) { e.odd.dead++; return; }                // on its way when the shooter was killed
+    // Rate. A link that stalls delivers a second of honest fire in one bunch, and this clock moves in 50 ms ticks, so the
+    // time between two shots says little. Two accounts instead. `credit` fills at the weapon's rate and holds a second's
+    // worth: a shot it cannot pay is refused. `shots` (pace) sets how fast what was accepted goes out, up to twice the
+    // weapon's rate: a shot it cannot pay yet waits its turn in e.fireQ, so a bunch is heard and felt as fire, not as one blow.
+    const rate = (w.rpm / 60) * 1.1;
+    e.credit = Math.min(1 + rate, e.credit + (this.time - e.creditAt) * rate); e.creditAt = this.time;
+    if (e.credit < 1) { e.odd.dropped++; return; }
+    e.credit -= 1;
+    const shot = this.judge(e, m, w, rate);                // judged now: this is as near as this side gets to what the shooter saw
+    if (e.fireQ.length || !this.pace(e, rate)) { e.odd.late++; e.fireQ.push(shot); } else this.fireShot(e, shot);
+  }
+  /** Takes one shot from the account that paces e's fire; false while it holds none. */
+  pace(e, rate) {
+    e.shots = Math.min(1 + rate * 0.15, e.shots + (this.time - e.lastFire) * rate * 2); e.lastFire = this.time;
+    if (e.shots < 1) return false;
+    e.shots -= 1; return true;
+  }
+  /** What a shot is allowed to do: the message the others get and the hits that stand, as [target, its life, damage, zone]. */
+  judge(e, m, w, rate) {
+    const pellets = w.pellets || 1, ends = Array.isArray(m.e) ? m.e : [], hurt = [];
+    const msg = Array.isArray(m.o) ? { t: 'fire', id: e.id, w: m.w, o: m.o, e: ends.slice(0, pellets) } : null;
     // Sight: from where the client says it fired, if that is near where this side has the shooter (its news of them is a
     // tick or more old), to where it says the shot landed, if that is near the target. Otherwise to the target's middle.
     const ey = e.y + (e.flags & 1 ? PLAYER.crouchEye : PLAYER.eye), o = m.o;
@@ -198,17 +213,23 @@ export class GameSim {
     for (const h of Array.isArray(m.hits) ? m.hits : []) {
       if (++n > pellets) break;
       const t = this.ents.get(h[0]);
-      if (!t || !t.alive || !this.hostile(e, t)) continue;
+      if (!t || !t.alive || !this.hostile(e, t)) { e.odd.gone++; continue; }      // mostly a target that fell to an earlier shot
       const d = Math.hypot(t.x - e.x, t.y - e.y, t.z - e.z);
-      if (d > w.range + 5) continue;
+      if (d > w.range + 5) { e.odd.range++; continue; }
       const k = t.flags & 1 ? CROUCH_SCALE : 1, end = ends[h[2]];
       const seen = (p) => { for (const y of [1.2 * k, 1.58 * k, 0.45]) if (this.world.los(p[0], p[1], p[2], t.x, t.y + y, t.z, 'bullet')) return true; return false; };
       const landed = Array.isArray(end) && end.every(Number.isFinite) && Math.hypot(end[0] - t.x, end[2] - t.z) < 2.5 && end[1] > t.y - 0.5 && end[1] < t.y + 2.5
         && this.world.los(from[0], from[1], from[2], end[0], end[1], end[2], 'bullet');
-      if (!landed && !seen(from)) continue;
+      if (!landed && !seen(from)) { e.odd.sight++; continue; }
       const zone = h[1] === 'head' ? 'head' : h[1] === 'legs' ? 'legs' : 'body';
-      this.damage(t, e, damageAt(w, d, zone), zone, m.w);
+      hurt.push([t, t.deaths, damageAt(w, d, zone), zone]);
     }
+    return { w: m.w, rate, msg, hurt };
+  }
+  /** Lets a judged shot happen: the others see and hear it, its hits do their damage, bots nearby take notice. */
+  fireShot(e, shot) {
+    if (shot.msg) this.out.broadcast(shot.msg, e.id);
+    for (const [t, life, amt, zone] of shot.hurt) if (t.deaths === life) this.damage(t, e, amt, zone, shot.w);      // not the next life of a target that fell meanwhile
     for (const b of this.ents.values()) if (b.ai && b.alive && this.hostile(b, e) && Math.hypot(b.x - e.x, b.z - e.z) < 32) botAlert(b, e, this.time);
   }
   botFire(e, o, aim, dmgScale) {
@@ -244,7 +265,7 @@ export class GameSim {
     if (t.hp <= 0) this.kill(t, by, weapon, zone === 'head');
   }
   kill(t, by, weapon, hs) {
-    t.alive = false; t.hp = 0; t.deaths++;
+    t.alive = false; t.hp = 0; t.deaths++; t.fireQ.length = 0;
     t.respawnAt = this.time + (t.home ? 2 : this.camp ? 4 : 3);
     if (this.camp && t.home) { const st = this.level.campaign.stages[this.camp.stage]; if (st?.type === 'score' && (!st.line || st.line === t.line)) this.camp.score++; }
     if (by && by !== t) { by.kills++; if (by.team) this.teamScore[by.team]++; }
@@ -347,6 +368,7 @@ export class GameSim {
       if (e.hp < 100 && now - e.lastHurt > 5) e.hp = Math.min(100, e.hp + 22 * dt);
       if (e.bot) { if (this.phase === 'play') botThink(this, e, dt, now); }
       else if (e.y < this.world.killY) this.kill(e, null, 'fall', false);
+      else while (e.fireQ.length && this.phase === 'play' && this.pace(e, e.fireQ[0].rate)) this.fireShot(e, e.fireQ.shift());      // shots that arrived in a bunch go out in turn
     }
     // pickups
     for (let i = 0; i < this.pickups.length; i++) {

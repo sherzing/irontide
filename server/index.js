@@ -89,6 +89,48 @@ const server = http.createServer(async (req, res) => {
 
 const rooms = new Map();
 let nextId = 1;
+
+// What went oddly for a player, so that "the sound broke up" or "my shots were swallowed" can be read from the log
+// afterwards. Three sources: the sim counts shots and hits it delayed or refused (e.odd in shared/sim.js); this file
+// counts messages over the flood limit and broadcasts kept back from a connection that was not taking them; and the
+// player's own client reports every 10 s what only it can see (client/src/health.js): sound its audio thread did not get
+// to play, slow frames, late snapshots, ping. Every LOOK seconds a line is logged for each player something odd happened
+// to since the last look, and the sums when they leave.
+const LOOK = 10, FLOOD = 120;                     // s between two looks; messages a client may send in a second
+const ODD = { snd: 200, slow: 3, fps: 25, dry: 3, gap: 250, ping: 200 };      // in one report of a client: from here on it is logged
+const num = (v, max) => (Number.isFinite(v) ? Math.max(0, Math.min(max, Math.round(v))) : 0);
+const fresh = () => ({ flood: 0, unsent: 0, reports: 0, snd: 0, slow: 0, dry: 0, gap: 0, ping: 0, fps: 0, cut: 0 });
+/** A client's report, added to what it reported since the last look (ws.health) and since it joined (ws.odd). */
+function health(ws, m) {
+  const h = { snd: num(m.snd, 60000), fps: num(m.fps, 1000), slow: num(m.slow, 1000), gap: num(m.gap, 60000), dry: num(m.dry, 1000), ping: num(m.ping, 60000), cut: num(m.cut, 100000) };
+  for (const o of [ws.odd, ws.health ||= fresh()]) {
+    o.fps = o.reports++ ? Math.min(o.fps, h.fps) : h.fps;
+    o.snd += h.snd; o.slow += h.slow; o.dry += h.dry; o.cut += h.cut; o.gap = Math.max(o.gap, h.gap); o.ping = Math.max(o.ping, h.ping);
+  }
+}
+/** What went oddly for the player on ws: since the last look, or with `sums` since they joined. '' if nothing did. */
+function oddLine(room, id, ws, sums = false) {
+  const e = room.sim.ents.get(id), o = ws.odd, now = { ...e?.odd, flood: o.flood, unsent: o.unsent }, was = sums ? {} : ws.seen, d = (k) => (now[k] || 0) - (was[k] || 0);
+  const h = sums ? null : ws.health, parts = [];
+  if (!sums) { ws.seen = now; ws.health = null; }
+  if (d('late')) parts.push(`${d('late')} shots arrived in a bunch and went out late`);
+  if (d('dropped')) parts.push(`${d('dropped')} shots refused: more than the weapon fires`);
+  if (d('range')) parts.push(`${d('range')} hits refused: out of range`);
+  if (d('sight')) parts.push(`${d('sight')} hits refused: out of sight`);
+  if (d('flood')) parts.push(`${d('flood')} messages dropped: over ${FLOOD} a second`);
+  if (d('unsent')) parts.push(`${d('unsent')} messages kept back: the connection was not taking them`);
+  if (h) {
+    if (h.snd >= ODD.snd) parts.push(`${h.snd} ms of sound not played`);
+    if (h.slow >= ODD.slow || h.fps < ODD.fps) parts.push(`${h.fps} frames a second, ${h.slow} of them over 100 ms`);
+    if (h.dry >= ODD.dry || h.gap >= ODD.gap) parts.push(`${h.dry} snapshots late, the longest wait ${h.gap} ms`);
+    if (h.ping >= ODD.ping || parts.length) parts.push(`ping ${h.ping} ms`);
+  }
+  if (sums) {
+    if (d('dead') || d('gone')) parts.push(`${d('dead')} shots after their own death, ${d('gone')} hits on a target already down`);
+    if (o.reports) parts.push(`${o.snd} ms of sound not played`, `${o.cut} sounds left out for being too many`, `${o.slow} frames over 100 ms, at worst ${o.fps} a second`, `${o.dry} snapshots late, the longest wait ${o.gap} ms`, `ping up to ${o.ping} ms`);
+  }
+  return parts.length ? `[room ${room.name}] ${sums ? 'sums for' : '!'} ${id} ${e?.name || ''}: ${parts.join(' · ')}` : '';
+}
 function getRoom(name, q) {
   let r = rooms.get(name);
   if (r) return r;
@@ -98,7 +140,10 @@ function getRoom(name, q) {
   r = { name, clients: new Map() };
   r.sim = new GameSim({ mode, fill, skill: DEFAULTS.skill, level }, {
     send: (id, m) => { const ws = r.clients.get(id); if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); },
-    broadcast: (m, except) => { const s = JSON.stringify(m); for (const [id, ws] of r.clients) if (id !== except && ws.readyState === 1 && ws.bufferedAmount < 1 << 20) ws.send(s); },
+    broadcast: (m, except) => {
+      const s = JSON.stringify(m);
+      for (const [id, ws] of r.clients) if (id !== except && ws.readyState === 1) { if (ws.bufferedAmount < 1 << 20) ws.send(s); else ws.odd.unsent++; }      // over 1 MB waiting: the connection is not taking them
+    },
   });
   rooms.set(name, r);
   const rec = recommendedPlayers(LEVELS[level]);
@@ -113,18 +158,21 @@ wss.on('connection', (ws, req) => {
   const room = getRoom(roomName, q);
   if (room.clients.size >= MAX_PLAYERS) { ws.send(JSON.stringify({ t: 'full' })); return ws.close(1013, `Server is full (${MAX_PLAYERS} players)`); }
   const id = nextId++;
+  ws.odd = fresh(); ws.seen = {}; ws.health = null;
   room.clients.set(id, ws);
   room.sim.addPlayer(id, (q.get('name') || 'Player').replace(/[^\w \-.]/g, '').slice(0, 16) || 'Player', parseLook(q.get('look')));
   console.log(`[room ${roomName}] + ${id} (${room.clients.size}/${MAX_PLAYERS})`);
-  let budget = 120; ws.alive = true;
-  const refill = setInterval(() => { budget = 120; }, 1000);
+  let budget = FLOOD; ws.alive = true;
+  const refill = setInterval(() => { budget = FLOOD; }, 1000);
   ws.on('pong', () => { ws.alive = true; });
   ws.on('message', (data) => {
-    if (--budget < 0) return;                       // crude flood protection
+    if (--budget < 0) { ws.odd.flood++; return; }   // crude flood protection
     let m; try { m = JSON.parse(data); } catch { return; }
+    if (m && m.t === 'health') return health(ws, m);
     room.sim.handle(id, m);
   });
   ws.on('close', () => {
+    const sums = oddLine(room, id, ws, true); if (sums) console.log(sums);
     clearInterval(refill); room.clients.delete(id); room.sim.removePlayer(id);
     console.log(`[room ${roomName}] - ${id} (${room.clients.size}/${MAX_PLAYERS})`);
     if (room.clients.size === 0) { rooms.delete(roomName); console.log(`[room ${roomName}] closed`); }
@@ -132,6 +180,7 @@ wss.on('connection', (ws, req) => {
 });
 
 setInterval(() => { for (const r of rooms.values()) { try { r.sim.tick(TICK); } catch (e) { console.error('[tick]', e); } } }, TICK * 1000);
+setInterval(() => { for (const r of rooms.values()) for (const [id, ws] of r.clients) { const line = oddLine(r, id, ws); if (line) console.log(line); } }, LOOK * 1000);
 setInterval(() => { for (const ws of wss.clients) { if (!ws.alive) { ws.terminate(); continue; } ws.alive = false; ws.ping(); } }, 15000);
 wss.on('error', (e) => { console.error(e.code === 'EADDRINUSE' ? `Port ${PORT} is already in use by another program.` : e); process.exit(CONFIG); });   // ws passes the listener's errors on
 server.listen(PORT, () => console.log(`IRONTIDE ${BUILD.version} server on http://localhost:${PORT}  (a new room plays ${DEFAULTS.mode} on ${DEFAULTS.level}, filled to ${DEFAULTS.fill}, bots ${DEFAULTS.skill})`));

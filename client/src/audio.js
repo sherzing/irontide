@@ -1,6 +1,11 @@
 // Fully synthesised audio (no sample files): gunshots, impacts, footsteps, UI, ambience.
+// A one-shot sound (a shot, a step, an impact) is a "voice": a handful of nodes that are taken out of the graph again
+// when it has ended (sweep). Left connected they cost the audio thread its time until the browser's next big garbage
+// collection, and in a busy match the sound broke up after half a minute.
+const VOICES = 40;      // voices that may play at once; when there are more, the quietest gives way
+const NEAR = 30;        // m: beyond this a shot is played without its crack and its action, which do not carry that far
 export class GameAudio {
-  constructor() { this.ctx = null; this.volume = 0.8; }
+  constructor() { this.ctx = null; this.volume = 0.8; this.live = []; this.ear = [0, 0, 0]; this.cut = 0; }      // live: the voices playing; ear: where the listener is; cut: voices not played or cut short for being too many
   /** Must be called from a user gesture. */
   start() {
     if (this.ctx) { this.ctx.resume(); return; }
@@ -55,62 +60,89 @@ export class GameAudio {
   setVolume(v) { this.volume = v; if (this.master) this.master.gain.value = v; }
   setListener(pos, fwd) {
     const c = this.ctx; if (!c) return; const l = c.listener;
+    this.ear[0] = pos.x; this.ear[1] = pos.y; this.ear[2] = pos.z; this.sweep();
     if (l.positionX) { l.positionX.value = pos.x; l.positionY.value = pos.y; l.positionZ.value = pos.z; l.forwardX.value = fwd.x; l.forwardY.value = fwd.y; l.forwardZ.value = fwd.z; l.upX.value = 0; l.upY.value = 1; l.upZ.value = 0; }
     else { l.setPosition(pos.x, pos.y, pos.z); l.setOrientation(fwd.x, fwd.y, fwd.z, 0, 1, 0); }
   }
-  /** Output node for a one-shot: direct (2D) or spatialised at pos [x,y,z]. */
+  /** How far pos [x,y,z] is from the listener, in metres. */
+  far(pos) { const e = this.ear; return Math.hypot(pos[0] - e[0], pos[1] - e[1], pos[2] - e[2]); }
+  /** Takes the nodes of every voice that has ended out of the graph. */
+  sweep() {
+    const now = this.ctx.currentTime, live = this.live; let n = 0;
+    for (const v of live) { if (v.until > now) live[n++] = v; else for (const node of v.nodes) node.disconnect(); }
+    live.length = n;
+  }
+  /**
+   * A voice for a one-shot: direct (2D) or spatialised at pos [x,y,z]. noise() and tone() play into it.
+   * Null when VOICES are playing already and this one would be the quietest of them: then it is not played.
+   */
   out(pos, gain = 1, wet = 0) {
-    const c = this.ctx, g = c.createGain(); g.gain.value = gain;
+    const c = this.ctx, now = c.currentTime, loud = pos ? gain / Math.max(4, this.far(pos)) : Infinity;      // the player's own sounds never give way
+    this.sweep();
+    if (this.live.length >= VOICES) {
+      let q = null; for (const v of this.live) if (!v.fading && (!q || v.loud < q.loud)) q = v;
+      this.cut++;
+      if (!q || q.loud >= loud) return null;
+      q.fading = true; q.g.gain.setTargetAtTime(0, now, 0.008); q.until = Math.min(q.until, now + 0.04);      // faded, not chopped: a chop clicks
+    }
+    const g = c.createGain(); g.gain.value = gain;
+    const v = { g, nodes: [g], until: now + 0.1, loud, fading: false };
     let tail = g;
     if (pos) {
       const p = c.createPanner(); p.panningModel = 'equalpower'; p.distanceModel = 'inverse'; p.refDistance = 4; p.rolloffFactor = 1.1; p.maxDistance = 300;
       p.positionX.value = pos[0]; p.positionY.value = pos[1]; p.positionZ.value = pos[2];
-      g.connect(p); tail = p;
+      g.connect(p); tail = p; v.nodes.push(p);
     }
     tail.connect(this.master);
-    if (wet) { const w = c.createGain(); w.gain.value = wet; tail.connect(w).connect(this.reverb); }
-    return g;
+    if (wet) { const w = c.createGain(); w.gain.value = wet; tail.connect(w).connect(this.reverb); v.nodes.push(w); }      // the tail it left in the reverb rings on without it
+    this.live.push(v);
+    return v;
   }
-  noise(dest, t, dur, { type = 'bandpass', f = 1000, f2 = null, q = 1, gain = 1, attack = 0.001, buf = null } = {}) {
+  /** v plays until t at least, and owns these nodes. */
+  keep(v, t, ...nodes) { v.until = Math.max(v.until, t + 0.1); v.nodes.push(...nodes); }
+  noise(v, t, dur, { type = 'bandpass', f = 1000, f2 = null, q = 1, gain = 1, attack = 0.001, buf = null } = {}) {
     const c = this.ctx, s = c.createBufferSource(); s.buffer = buf || this.white; s.loop = true;
     const fl = c.createBiquadFilter(); fl.type = type; fl.frequency.setValueAtTime(f, t); fl.Q.value = q;
     if (f2) fl.frequency.exponentialRampToValueAtTime(f2, t + dur);
     const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(gain, t + attack); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    s.connect(fl).connect(g).connect(dest); s.start(t, Math.random() * 1.5); s.stop(t + dur + 0.05);
+    s.connect(fl).connect(g).connect(v.g); s.start(t, Math.random() * 1.5); s.stop(t + dur + 0.05);
+    this.keep(v, t + dur, s, fl, g);
   }
-  tone(dest, t, dur, { f = 440, f2 = null, gain = 1, type = 'sine', attack = 0.001 } = {}) {
+  tone(v, t, dur, { f = 440, f2 = null, gain = 1, type = 'sine', attack = 0.001 } = {}) {
     const c = this.ctx, o = c.createOscillator(); o.type = type; o.frequency.setValueAtTime(f, t);
     if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
     const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(gain, t + attack); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g).connect(dest); o.start(t); o.stop(t + dur + 0.05);
+    o.connect(g).connect(v.g); o.start(t); o.stop(t + dur + 0.05);
+    this.keep(v, t + dur, o, g);
   }
 
   shot(weapon, pos = null) {
     if (!this.ctx) return; const t = this.ctx.currentTime;
-    const far = !!pos, d = this.out(pos, far ? 1.5 : 0.85, far ? 0.9 : 0.5);
+    const far = !!pos, d = this.out(pos, far ? 1.5 : 0.85, far ? 0.9 : 0.5); if (!d) return;
+    const near = !pos || this.far(pos) < NEAR;              // each weapon: the blast, its thump, and from close by the crack and the action
     if (weapon === 'marksman') {
       this.noise(d, t, 0.5, { type: 'lowpass', f: 5200, f2: 260, gain: 1.5 });
       this.tone(d, t, 0.34, { f: 150, f2: 34, gain: 1.6 });
-      this.noise(d, t, 0.06, { type: 'highpass', f: 2500, gain: 0.9 });
+      if (near) this.noise(d, t, 0.06, { type: 'highpass', f: 2500, gain: 0.9 });
     } else if (weapon === 'shotgun') {
       this.noise(d, t, 0.42, { type: 'lowpass', f: 4200, f2: 220, gain: 1.7 });
       this.tone(d, t, 0.3, { f: 120, f2: 30, gain: 1.7 });
-      this.noise(d, t, 0.05, { type: 'highpass', f: 2200, gain: 0.8 });
-      this.noise(d, t + 0.05, 0.08, { type: 'bandpass', f: 1500, q: 5, gain: 0.3 });     // action cycling
+      if (near) this.noise(d, t, 0.05, { type: 'highpass', f: 2200, gain: 0.8 });
+      if (near) this.noise(d, t + 0.05, 0.08, { type: 'bandpass', f: 1500, q: 5, gain: 0.3 });     // action cycling
     } else if (weapon === 'smg') {
       this.noise(d, t, 0.17, { type: 'lowpass', f: 5200, f2: 520, gain: 0.95 });
       this.tone(d, t, 0.12, { f: 180, f2: 60, gain: 0.95 });
-      this.noise(d, t, 0.03, { type: 'highpass', f: 3200, gain: 0.6 });
-      this.noise(d, t + 0.02, 0.06, { type: 'bandpass', f: 2000, q: 6, gain: 0.22 });
+      if (near) this.noise(d, t, 0.03, { type: 'highpass', f: 3200, gain: 0.6 });
+      if (near) this.noise(d, t + 0.02, 0.06, { type: 'bandpass', f: 2000, q: 6, gain: 0.22 });
     } else if (weapon === 'pistol') {
       this.noise(d, t, 0.16, { type: 'lowpass', f: 7000, f2: 700, gain: 1.0 });
       this.tone(d, t, 0.11, { f: 300, f2: 80, gain: 0.8 });
-      this.noise(d, t, 0.03, { type: 'highpass', f: 3500, gain: 0.7 });
+      if (near) this.noise(d, t, 0.03, { type: 'highpass', f: 3500, gain: 0.7 });
     } else {
       this.noise(d, t, 0.2, { type: 'lowpass', f: 6200, f2: 480, gain: 1.05 });
       this.tone(d, t, 0.14, { f: 210, f2: 52, gain: 1.0 });
-      this.noise(d, t, 0.035, { type: 'highpass', f: 3000, gain: 0.75 });
-      this.noise(d, t + 0.02, 0.07, { type: 'bandpass', f: 2400, q: 6, gain: 0.25 });   // action clatter
+      if (near) this.noise(d, t, 0.035, { type: 'highpass', f: 3000, gain: 0.75 });
+      if (near) this.noise(d, t + 0.02, 0.07, { type: 'bandpass', f: 2400, q: 6, gain: 0.25 });   // action clatter
     }
   }
   /** Weapon handling foley. Each kind is a few layered noise bursts / pitched pings: [type, offset s, duration s, options]. */
@@ -143,29 +175,29 @@ export class GameAudio {
       // cloth + sling rustle when a weapon comes up
       draw: [['n', 0, 0.16, { f: 700, f2: 1500, q: 0.8, gain: 0.35, attack: 0.06 }], ['n', 0.12, 0.03, { f: 2000, q: 5, gain: 0.4 }]],
     });
-    const t = this.ctx.currentTime + delay, d = this.out(null, 0.5);
+    const t = this.ctx.currentTime + delay, d = this.out(null, 0.5); if (!d) return;
     for (const [type, at, dur, o] of R[kind] || R.mag) {
       if (type === 'n') this.noise(d, t + at, dur, { type: 'bandpass', gain: 1, ...o });
       else this.tone(d, t + at, dur, o);
     }
   }
   step(surf = 'concrete', pos = null, gain = 1) {
-    if (!this.ctx) return; const t = this.ctx.currentTime, d = this.out(pos, (pos ? 0.9 : 0.34) * gain);
+    if (!this.ctx) return; const t = this.ctx.currentTime, d = this.out(pos, (pos ? 0.9 : 0.34) * gain); if (!d) return;
     if (surf === 'metal') { this.noise(d, t, 0.09, { type: 'bandpass', f: 900 + Math.random() * 300, q: 3, gain: 1 }); this.tone(d, t, 0.14, { f: 190 + Math.random() * 40, f2: 150, gain: 0.5 }); }
     else if (surf === 'wood') { this.noise(d, t, 0.08, { type: 'lowpass', f: 700, gain: 1 }); this.tone(d, t, 0.09, { f: 120 + Math.random() * 30, f2: 80, gain: 0.8 }); }
     else { this.noise(d, t, 0.07, { type: 'lowpass', f: 1100 + Math.random() * 500, f2: 300, gain: 1 }); this.noise(d, t, 0.03, { type: 'highpass', f: 3000, gain: 0.12 }); }
   }
   impact(surf, pos) {
-    if (!this.ctx) return; const t = this.ctx.currentTime, d = this.out(pos, 0.8, 0.2);
+    if (!this.ctx) return; const t = this.ctx.currentTime, d = this.out(pos, 0.8, 0.2); if (!d) return;
     if (surf === 'metal') { this.tone(d, t, 0.22, { f: 1800 + Math.random() * 2400, gain: 0.5 }); this.noise(d, t, 0.05, { type: 'highpass', f: 4000, gain: 0.8 }); }
     else if (surf === 'flesh') { this.noise(d, t, 0.09, { type: 'lowpass', f: 900, f2: 200, gain: 1.2 }); }
     else if (surf === 'wood') { this.noise(d, t, 0.07, { type: 'bandpass', f: 900, q: 2, gain: 1 }); }
     else if (surf === 'water') { this.noise(d, t, 0.25, { type: 'bandpass', f: 1600, f2: 500, q: 1, gain: 0.8 }); }
     else { this.noise(d, t, 0.08, { type: 'bandpass', f: 2600, f2: 900, q: 1, gain: 1 }); }
   }
-  whiz(pos) { if (!this.ctx) return; const t = this.ctx.currentTime, d = this.out(pos, 0.7); this.noise(d, t, 0.14, { type: 'bandpass', f: 4200, f2: 1200, q: 8, gain: 1, attack: 0.02 }); }
+  whiz(pos) { if (!this.ctx) return; const t = this.ctx.currentTime, d = this.out(pos, 0.7); if (!d) return; this.noise(d, t, 0.14, { type: 'bandpass', f: 4200, f2: 1200, q: 8, gain: 1, attack: 0.02 }); }
   ui(kind) {
-    if (!this.ctx) return; const t = this.ctx.currentTime, d = this.out(null, 0.35);
+    if (!this.ctx) return; const t = this.ctx.currentTime, d = this.out(null, 0.35); if (!d) return;
     if (kind === 'hit') this.tone(d, t, 0.05, { f: 1500, f2: 1100, gain: 0.7, type: 'triangle' });
     else if (kind === 'head') { this.tone(d, t, 0.07, { f: 2300, f2: 1700, gain: 0.8, type: 'triangle' }); }
     else if (kind === 'kill') { this.tone(d, t, 0.08, { f: 880, gain: 0.7, type: 'triangle' }); this.tone(d, t + 0.07, 0.16, { f: 1320, gain: 0.7, type: 'triangle' }); }

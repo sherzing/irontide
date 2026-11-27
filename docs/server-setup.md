@@ -118,3 +118,4 @@ not been tested with IRONTIDE.
 | Page loads, but joining a room fails | Something in front of the server does not forward WebSockets | Forward `/ws` with the upgrade headers |
 | `Server is full (64 players)` | The room has 64 human players | Join another room name |
 | Low frame rate for one player | Their graphics chip | Settings → Graphics quality: Low or Medium |
+| A player's sound breaks up, their shots do not count, or others move in jerks | Their machine or their connection | The server's log says which: every 10 s a line starting `[room <name>] !` lists what went oddly for a player (shots that arrived in a bunch, sound not played, slow frames, late snapshots, ping), and a `sums for` line when they leave. On an installed server: `journalctl -u irontide` |

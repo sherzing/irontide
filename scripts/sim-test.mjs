@@ -4,6 +4,7 @@
 import { GameSim, TICK, MAX_PLAYERS } from '../shared/sim.js';
 import { LEVELS, DEFAULT_LEVEL, recommendedPlayers } from '../shared/levels/index.js';
 import { PLAYER, LEAN, leanBits, leanShift } from '../shared/collision.js';
+import { WEAPONS } from '../shared/weapons.js';
 
 const count = {};
 const tally = (m) => { count[m.t] = (count[m.t] || 0) + 1; };
@@ -72,6 +73,50 @@ if (sim.phase !== 'end') fail('the team match did not finish');
 const told = sim.status(), right = told.names.join() === 'T' && told.bots === 15 && told.phase === 'end' && told.score.join() === sim.teamScore.slice(1).join() && told.limit === 20 && told.level === DEFAULT_LEVEL && told.mode === 'tdm';
 console.log(`  its status: ${told.names.length} player, ${told.bots} bots, ${told.phase}, ${told.score.join(' : ')} of ${told.limit}`, right ? 'OK' : '');
 if (!right) fail(`status of the team match: ${JSON.stringify(told)}`);
+// A link that stalls delivers a player's shots in a bunch. Every one of them must still be passed on and its hit counted,
+// let out in turn at no more than twice the weapon's rate; a client that fires faster than the weapon can gets no more
+// through than the weapon fires in that time and a second; and a shooter who dies takes the shots still waiting with him.
+{
+  const W = WEAPONS.carbine, gap = 60 / W.rpm, perSecond = W.rpm / 60 * 1.1;
+  /** `shots` shots fired `every` seconds apart; held(t) is when the one fired at t reaches the server. Returns what came of them. */
+  const volley = (shots, every, held, after = () => {}) => {
+    const heard = [], out = { hit: 0 };
+    const s = new GameSim({ mode: 'dm', fill: 0, scoreLimit: 1e9, timeLimit: 1e9 }, { send: (id, m) => { if (m.t === 'dmg' && id === 1) out.hit++; }, broadcast: (m) => { if (m.t === 'fire') heard.push(s.time); } });
+    s.addPlayer(1, 'Shooter'); s.addPlayer(2, 'Target');
+    const a = s.ents.get(1), b = s.ents.get(2);
+    let at = null;      // the target stands 6 m from the shooter, in plain sight
+    for (let k = 0; k < 16 && !at; k++) { const x = a.x + Math.sin(k * Math.PI / 8) * 6, z = a.z + Math.cos(k * Math.PI / 8) * 6; if (s.nav.walkable(x, z) && s.world.los(a.x, a.y + PLAYER.eye, a.z, x, a.y + 1.2, z, 'bullet')) at = [x, a.y, z]; }
+    s.handle(2, { t: 'st', p: at, yw: 0, pt: 0, f: 0, w: 'carbine' });
+    const shot = { t: 'fire', w: 'carbine', o: [a.x, a.y + PLAYER.eye, a.z], e: [[at[0], at[1] + 1.2, at[2]]], hits: [[2, 'body', 0]] };
+    const due = Array.from({ length: shots }, (_, i) => held(i * every)), t0 = s.time; let sent = 0;
+    for (let tick = 0; tick < 20 * (due[shots - 1] + 3); tick++) {
+      b.hp = 1e6;                                             // the target outlives the volley
+      while (sent < shots && due[sent] <= s.time - t0 + 1e-9) { s.handle(1, shot); sent++; }
+      after(s, a, sent, heard);
+      s.tick(TICK);
+    }
+    let most = 0; for (let i = 0; i < heard.length; i++) { let n = 0; for (let j = i; j < heard.length && heard[j] < heard[i] + 1; j++) n++; most = Math.max(most, n); }      // the most shots passed on within any one second
+    return { heard: heard.length, hit: out.hit, most, last: heard.length ? heard[heard.length - 1] - t0 : 0, sent: due[shots - 1], sim: s };
+  };
+  const every = (s) => (t) => Math.ceil((t + 1e-6) / s) * s, stall = (at, s) => (t) => (t >= at && t < at + s ? at + s : t);
+  const cases = [['as fired', (t) => t], ['in bunches every 300 ms', every(0.3)], ['in bunches every 400 ms', every(0.4)], ['after one stall of 1 s', stall(1.5, 1)]];
+  for (const [label, held] of cases) {
+    const r = volley(48, gap, held), ok = r.heard === 48 && r.hit === 48 && r.most <= 2 * perSecond + 4 && r.last <= r.sent + 1.1;
+    console.log(`  48 carbine shots reaching the server ${label}: ${r.heard} passed on, ${r.hit} hits counted, at most ${r.most} in a second, the last ${(r.last - r.sent).toFixed(2)} s after it arrived`, ok ? 'OK' : '');
+    if (!ok) fail(`shots ${label}: ${r.heard} of 48 passed on, ${r.hit} hits, ${r.most} in a second, last after ${(r.last - r.sent).toFixed(2)} s`);
+  }
+  {
+    const r = volley(200, 0.01, (t) => t), fair = Math.ceil(perSecond * 3) + 2, ok = r.heard <= fair && r.most <= 2 * perSecond + 4 && r.last <= r.sent + 1.1 && r.sim.ents.get(1).odd.dropped === 200 - r.heard;
+    console.log(`  a client firing the carbine 100 times a second for 2 s: ${r.heard} passed on (the weapon fires ${Math.round(W.rpm / 60 * 2)} in that time), ${r.sim.ents.get(1).odd?.dropped} refused and counted`, ok ? 'OK' : '');
+    if (!ok) fail(`a flood of 200 shots: ${r.heard} passed on (${fair} would be fair), ${r.most} in a second, ${r.sim.ents.get(1).odd?.dropped} counted as refused`);
+  }
+  {
+    let died = -1;
+    const r = volley(12, 0, (t) => t, (s, a, sent, heard) => { if (sent === 12 && died < 0) { s.kill(a, null, 'fall', false); died = heard.length; } }), ok = died >= 0 && r.heard === died;
+    console.log(`  a shooter killed with shots still waiting: ${r.heard - died} fired after his death`, ok ? 'OK' : '');
+    if (!ok) fail(`${r.heard - died} shots were passed on after the shooter died`);
+  }
+}
 // A player who leans out of cover (Q, E) shows his head and hides the rest. A bot must see that head and be able to hit it;
 // while he stands upright behind the same cover it must see nothing.
 {

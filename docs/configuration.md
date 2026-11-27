@@ -96,7 +96,11 @@ restart the server.
 | How spread adds up; how fast a kick lands, how much of it sights and crouching leave, how fast the view comes back | `spreadOf` and `RECOIL` in `shared/weapons.js` |
 | What a player's shot can hit on a soldier | `HIT`, `HEAD` and `HEAD_R` in `client/src/characters.js` |
 | What a bot's shot can hit | `hitCharacter` in `shared/collision.js` |
-| Which shots the server refuses: rate, range, line of sight, and how far it trusts the client's own account | `humanFire` in `shared/sim.js` |
+| Which shots the server refuses: rate, range, line of sight, and how far it trusts the client's own account | `humanFire` and `judge` in `shared/sim.js` |
+| How many shots that arrive in one bunch the server accepts (a second's worth), and how fast it lets them out (twice the weapon's rate) | `credit` in `humanFire`, and `pace`, in `shared/sim.js` |
+| What the server logs as odd for a player, how often it looks, and how many messages a second a client may send | `ODD`, `LOOK` and `FLOOD` in `server/index.js` |
+| What a player's client reports to the server and how often; what counts as a slow frame or a late snapshot | `EVERY`, `SLOW` and `DRY` in `client/src/health.js` |
+| How many sounds play at once, and from what distance a shot loses its crack and its action | `VOICES` and `NEAR` in `client/src/audio.js` |
 | Crews: names, sides, colours, kit | `CREWS` in `shared/crews.js`; the shape of each kit item in `KIT` in `client/src/crewkit.js` |
 | The training course: steps, what the range officer says, where the targets stand | `campaign` and `TARGETS` in `shared/levels/range.js` |
 | Which weapons exist and their number keys | `WEAPON_ORDER` in `shared/weapons.js` |
@@ -122,6 +126,7 @@ restart the server.
 | How hard the shipped textures are compressed, how large a prop's textures are, a prop's triangle budget | `QUALITY`, `TEX` and `BUDGET` in `scripts/optimize-assets.mjs`; `npm run optimize` then builds everything again |
 | How long a browser keeps the game's files before it asks whether they changed | `keep` in `server/index.js` |
 | How much a first visit may download, and how many shader programs may be compiled while drawing, before the load check fails | `BUDGET_MB` and `LATE` in `scripts/load-test.mjs` |
+| How much sound may go missing in a busy match before the sound check fails | `LOST_MS` in `scripts/sound-test.mjs` |
 | Dev server port and WebSocket proxy | `vite.config.js` |
 
 The options inside a `QUALITY` preset:
